@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Uploaded files (local media storage)
+uploads/
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
