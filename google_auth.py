@@ -28,7 +28,8 @@ GOOGLE_SCOPES = "openid email profile"
 def verify_google_token(token: str) -> dict:
     """Verify a Google ID token and return the user's identity.
 
-    Returns a dict with only: sub, email, name.
+    Returns a dict with only: sub, email, name, picture (profile photo URL,
+    or None if the Google account has none).
     Raises ValueError if the token is invalid or expired.
 
     ``email_verified`` is enforced here rather than trusted implicitly: Google
@@ -110,7 +111,13 @@ def exchange_code_for_identity(code: str) -> dict:
         raise ValueError("Google token exchange failed") from exc
 
     if response.status_code != 200:
-        raise ValueError("Google token exchange failed")
+        # Google's error body explains the real cause, e.g.:
+        # - invalid_grant        -> the code was already used or expired
+        # - redirect_uri_mismatch -> GOOGLE_REDIRECT_URI doesn't match the console
+        # - invalid_client       -> wrong/rotated GOOGLE_CLIENT_SECRET
+        raise ValueError(
+            f"Google token exchange failed: {response.status_code} {response.text}"
+        )
 
     # Google reports a user-declined consent as HTTP 400 with a JSON error
     # body, so reading .json() safely matters: an HTML error page from a proxy
