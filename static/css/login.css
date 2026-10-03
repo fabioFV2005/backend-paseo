@@ -1,0 +1,199 @@
+/* Login page — vercel-design system.
+   Palette: #fafafa background, #18181b text, #4d4d4d muted, #dbdbdb hairline,
+   #de2670 danger on #ffebeb, #006bff focus. Typeface: Georgia. 4px grid. */
+
+:root {
+  --background: #fafafa;
+  --text-primary: #18181b;
+  --text-muted: #4d4d4d;
+  --text-disabled: #666666;
+  --border-hairline: #dbdbdb;
+  --border-hover: #a0a0a0;
+  --danger: #de2670;
+  --danger-surface: #ffebeb;
+  --focus: #006bff;
+  --radius: 14px;
+  --shadow-card: inset 0 1px #ffffff40, 0 1px 1px #00000005,
+    0 4px 8px -4px #00000008, 0 16px 24px -8px #00000008;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--text-primary);
+  color: var(--background);
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--background);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 32px;
+  text-align: center;
+  animation: card-enter 0.3s cubic-bezier(0.6, 0.3, 0.98, 0.5) both;
+}
+
+@keyframes card-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.auth-subtitle {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.auth-error {
+  margin: 24px 0 0;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 14px;
+  text-align: left;
+}
+
+/* "Continue with Google" — ghost button pattern, full width. */
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 24px;
+  padding: 8px 16px;
+  min-height: 40px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+
+.btn-google:hover {
+  border-color: var(--border-hover);
+}
+
+.btn-google:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.btn-google-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.btn-google-spinner {
+  display: none;
+}
+
+.btn-google.is-loading {
+  pointer-events: none;
+  color: var(--text-disabled);
+}
+
+.btn-google.is-loading .btn-google-icon {
+  display: none;
+}
+
+.btn-google.is-loading .btn-google-spinner {
+  display: inline-block;
+}
+
+/* 8-spoke spinner (spinner-opacity keyframe from the motion spec). */
+.spinner {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.spinner span {
+  position: absolute;
+  top: 0;
+  left: 7px;
+  width: 2px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--text-disabled);
+  transform-origin: 1px 8px;
+  animation: spinner-opacity 0.8s linear infinite;
+}
+
+.spinner span:nth-child(1) { transform: rotate(0deg);    animation-delay: -0.7s; }
+.spinner span:nth-child(2) { transform: rotate(45deg);   animation-delay: -0.6s; }
+.spinner span:nth-child(3) { transform: rotate(90deg);   animation-delay: -0.5s; }
+.spinner span:nth-child(4) { transform: rotate(135deg);  animation-delay: -0.4s; }
+.spinner span:nth-child(5) { transform: rotate(180deg);  animation-delay: -0.3s; }
+.spinner span:nth-child(6) { transform: rotate(225deg);  animation-delay: -0.2s; }
+.spinner span:nth-child(7) { transform: rotate(270deg);  animation-delay: -0.1s; }
+.spinner span:nth-child(8) { transform: rotate(315deg);  animation-delay: 0s; }
+
+@keyframes spinner-opacity {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.15;
+  }
+}
+
+.auth-legal {
+  margin: 24px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card {
+    animation: none;
+  }
+  .spinner span {
+    animation: none;
+    opacity: 0.4;
+  }
+}
