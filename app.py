@@ -1,225 +1,124 @@
-import os
-import secrets
+"""Flask application factory.
 
-from dotenv import load_dotenv
+`create_app()` wires the extensions, the blueprints and the error handlers onto
+a Flask instance. `app` at the bottom is the module-level instance so
+`flask run`, `python app.py` and `from app import app` all keep working.
 
-# Load the .env file BEFORE importing modules that read environment variables.
-load_dotenv()
+Request lifecycle for an API call:
 
-from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+    before_request  -> load_current_user() puts the caller in g.current_user
+    route           -> parses input, calls one service function
+    service         -> runs the rule and commits exactly once
+    after_request   -> rollback anything left open, so a read-only request
+                       that touched the session does not hold a transaction
 
-from auth import (
-    JWT_SECRET_KEY,
-    SESSION_COOKIE_NAME,
-    create_token,
-    get_current_user,
-    require_admin,
-    require_seller,
-    set_session_cookie,
-)
-from google_auth import build_google_auth_url, exchange_code_for_identity, verify_google_token
-from models.users import User, get_or_create_google_user, update_user_location
-from roles import UserRole
+Order matters: the rollback in after_request runs even when a handler raised,
+which is what keeps a failed request from holding row locks.
+"""
 
-app = Flask(__name__)
-# Signs the Flask session cookie that carries the OAuth "state" CSRF token
-# between the redirect to Google and the callback.
-app.secret_key = os.environ.get("FLASK_SECRET_KEY") or JWT_SECRET_KEY
+import click
+from flask import Flask
 
-# User-facing messages for the login page, keyed by the "error" query param.
-# Each message names the problem and how to recover.
-LOGIN_ERRORS = {
-    "cancelled": "You cancelled the Google sign-in. Nothing was shared — you can try again whenever you're ready.",
-    "google": "We couldn't verify your Google account. Please try again.",
-    "invalid_state": "Your sign-in session expired. Please try again.",
-    "unavailable": "Google sign-in is temporarily unavailable. Please try again later.",
-}
+import config
+from auth import load_current_user
+from extensions import cors, db, limiter
+
+# Importing the package registers every model on db.metadata, without which
+# create_all() would build an empty schema and the relationships would not
+# resolve.
+import models  # noqa: F401
 
 
-def landing_url_for(user: User) -> str:
-    """Role-based landing page after a successful login."""
-    if user.role is UserRole.ADMIN:
-        return url_for("admin_dashboard")
-    if user.role is UserRole.SELLER:
-        return url_for("seller_dashboard")
-    return url_for("home")
+def create_app(config_object=None) -> Flask:
+    app = Flask(__name__)
 
-
-def user_payload(user: User) -> dict:
-    """Public JSON representation of a user (used by /auth/google and /me)."""
-    return {
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
-        "role": user.role.value,
-        "picture": user.picture,
-        "latitude": user.latitude,
-        "longitude": user.longitude,
-    }
-
-
-@app.route("/")
-def home():
-    """Storefront home — the landing page for USER accounts after login.
-
-    It is also the public face of the shop: anonymous visitors see the same
-    storefront with a sign-in prompt instead of the account menu.
-    """
-    return render_template("client/home.html", user=get_current_user())
-
-
-@app.route("/logout")
-def logout():
-    """Clear the session cookie and return to the storefront."""
-    response = redirect(url_for("home"))
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
-    return response
-
-
-@app.route("/login")
-def login():
-    """Render the login page. Already-authenticated users go straight on."""
-    user = get_current_user()
-    if user is not None:
-        return redirect(landing_url_for(user))
-    return render_template("auth/login.html", error_message=LOGIN_ERRORS.get(request.args.get("error", "")))
-
-
-@app.route("/auth/google/login")
-def google_oauth_login():
-    """Start the Google OAuth 2.0 redirect flow.
-
-    Generates a random CSRF state (stored in the signed Flask session) and
-    redirects the browser to Google's consent screen.
-    """
-    state = secrets.token_urlsafe(32)
-    session["google_oauth_state"] = state
-    try:
-        return redirect(build_google_auth_url(state))
-    except ValueError:
-        session.pop("google_oauth_state", None)
-        return redirect(url_for("login", error="unavailable"))
-
-
-@app.route("/auth/google/callback")
-def google_oauth_callback():
-    """Handle Google's redirect back after the consent screen.
-
-    - User cancelled (error=access_denied) -> back to /login with a message.
-    - State mismatch (CSRF/expired)        -> back to /login with a message.
-    - Success -> find or create the user, issue the session JWT in an
-      HttpOnly cookie and redirect to the role-based landing page.
-    """
-    error = request.args.get("error")
-    if error:
-        # access_denied is Google telling us the user cancelled the consent screen.
-        code = "cancelled" if error == "access_denied" else "google"
-        return redirect(url_for("login", error=code))
-
-    state = request.args.get("state", "")
-    expected_state = session.pop("google_oauth_state", None)
-    if not expected_state or not secrets.compare_digest(expected_state, state):
-        return redirect(url_for("login", error="invalid_state"))
-
-    code = request.args.get("code")
-    if not code:
-        return redirect(url_for("login", error="google"))
-
-    try:
-        identity = exchange_code_for_identity(code)  # returns only sub/email/name/picture
-    except ValueError as exc:
-        # Visible in the server console: the real reason Google rejected us.
-        app.logger.warning("Google sign-in failed: %s", exc)
-        return redirect(url_for("login", error="google"))
-
-    user = get_or_create_google_user(
-        google_sub=identity["sub"],
-        email=identity["email"],
-        name=identity["name"],
-        picture=identity["picture"],
+    app.config.update(
+        SECRET_KEY=config.SECRET_KEY,
+        SQLALCHEMY_DATABASE_URI=config.DATABASE_URL,
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        SQLALCHEMY_ECHO=config.SQLALCHEMY_ECHO,
+        TESTING=config.TESTING,
+        DEBUG=config.DEBUG,
+        JSON_SORT_KEYS=False,
+        MAX_CONTENT_LENGTH=1 * 1024 * 1024,  # 1 MB: this API takes JSON, not uploads
+        # Off under TESTING so a fast suite is not throttled by its own fixtures.
+        RATELIMIT_ENABLED=not config.TESTING,
+        RATELIMIT_STORAGE_URI=config.RATELIMIT_STORAGE_URI,
+        RATELIMIT_HEADERS_ENABLED=True,
+        SCAN_DUPLICATE_WINDOW_SECONDS=config.SCAN_DUPLICATE_WINDOW_SECONDS,
     )
+    if config_object:
+        app.config.update(config_object)
 
-    response = redirect(landing_url_for(user))
-    set_session_cookie(response, create_token(user))
-    return response
+    db.init_app(app)
+    limiter.init_app(app)
 
+    if config.CORS_ORIGINS:
+        # Only when explicitly configured. Same-origin (frontend served by this
+        # app or a reverse proxy) needs no CORS headers at all, and leaving
+        # CORS off by default means a forgotten env var cannot accidentally open
+        # the API to any origin.
+        cors.init_app(
+            app,
+            resources={r"/api/*": {"origins": config.CORS_ORIGINS}},
+            supports_credentials=True,
+        )
 
-@app.route("/auth/google", methods=["POST"])
-def google_login():
-    """Register or log in with a Google account.
+    from api import register_blueprints
+    from api.errors import register_error_handlers
 
-    The request body may contain ONLY the Google ID token. Any extra field
-    (such as a "role" sent by the frontend) is ignored: the role is decided
-    exclusively by the backend.
+    register_blueprints(app)
+    register_error_handlers(app)
 
-    - New user  -> created with the default USER role.
-    - Existing user -> keeps their current role (never reset, never upgraded).
-    """
-    data = request.get_json(silent=True) or {}
-    token = data.get("token")
-    if not token:
-        return jsonify({"error": "Missing Google ID token"}), 400
+    app.before_request(load_current_user)
 
-    try:
-        identity = verify_google_token(token)  # returns only sub/email/name/picture
-    except ValueError:
-        return jsonify({"error": "Invalid Google token"}), 401
+    @app.after_request
+    def _end_request(response):
+        # Services commit exactly once, so by the time a handler returns there
+        # is nothing left to save. Rolling back here is therefore safe and it
+        # does two useful things: it releases the connection and any row locks
+        # immediately instead of waiting for garbage collection, and it
+        # discards a half-written unit of work if a handler returned early
+        # without going through a service. It also runs after an unhandled
+        # exception, which is when holding a lock would hurt most.
+        db.session.rollback()
+        return response
 
-    user = get_or_create_google_user(
-        google_sub=identity["sub"],
-        email=identity["email"],
-        name=identity["name"],
-        picture=identity["picture"],
-    )
-
-    return jsonify({"token": create_token(user), "user": user_payload(user)})
-
-
-@app.route("/me")
-def me():
-    """Any authenticated user can see their own profile."""
-    user = get_current_user()
-    if user is None:
-        return jsonify({"error": "Authentication required"}), 401
-    return jsonify(user_payload(user))
+    _register_cli(app)
+    return app
 
 
-@app.route("/me/location", methods=["POST", "PUT"])
-def update_my_location():
-    """Save the authenticated user's location (sent by the device's GPS).
+def _register_cli(app: Flask) -> None:
+    @app.cli.command("init-db")
+    def init_db():
+        """Create any missing tables.
 
-    Body JSON: {"latitude": 4.611, "longitude": -74.081}
-    """
-    user = get_current_user()
-    if user is None:
-        return jsonify({"error": "Authentication required"}), 401
+        Safe to run repeatedly. This is a prototype schema: if a model changes
+        incompatibly, drop the database and run it again rather than trying to
+        migrate by hand. There is no migration tool on purpose -- at this stage
+        a clean reseed is faster and less error-prone than a migration history,
+        and nothing in this database is worth preserving across a schema change.
+        """
+        db.create_all()
+        click.echo("Tables created: " + ", ".join(sorted(db.metadata.tables)))
 
-    data = request.get_json(silent=True) or {}
-    try:
-        latitude = float(data["latitude"])
-        longitude = float(data["longitude"])
-    except (KeyError, TypeError, ValueError):
-        return jsonify({"error": "latitude and longitude (numbers) are required"}), 400
+    @app.cli.command("drop-db")
+    @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
+    def drop_db(yes):
+        """Drop every table. Destructive."""
+        if not yes:
+            click.confirm("This deletes ALL data. Continue?", abort=True)
+        db.drop_all()
+        click.echo("All tables dropped.")
 
-    try:
-        user = update_user_location(user.id, latitude, longitude)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    # seed-demo / reset-demo / dev-token
+    import seed
 
-    return jsonify({"user": user_payload(user)})
-
-
-@app.route("/seller/dashboard")
-@require_seller
-def seller_dashboard():
-    return render_template("seller/dashboard.html", user=g.current_user)
+    seed.register(app)
 
 
-@app.route("/admin/dashboard")
-@require_admin
-def admin_dashboard():
-    return render_template("admin/dashboard.html", user=g.current_user)
+app = create_app()
 
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="127.0.0.1", port=5000, debug=config.DEBUG)

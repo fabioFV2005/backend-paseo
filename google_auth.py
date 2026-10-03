@@ -14,21 +14,11 @@ Two ways to obtain a verified identity:
   is used ONLY here, on the backend, and is never exposed to the browser.
 """
 
-import os
-from urllib.parse import urlencode
-
 import requests
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
-# The OAuth 2.0 client ID of this application (Google Cloud Console).
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
-# The OAuth 2.0 client secret. BACKEND ONLY — never send it to the browser.
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-# Must match an "Authorized redirect URI" of the OAuth client in Google Cloud Console.
-GOOGLE_REDIRECT_URI = os.environ.get(
-    "GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/google/callback"
-)
+import config
 
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -41,21 +31,32 @@ def verify_google_token(token: str) -> dict:
     Returns a dict with only: sub, email, name, picture (profile photo URL,
     or None if the Google account has none).
     Raises ValueError if the token is invalid or expired.
+
+    ``email_verified`` is enforced here rather than trusted implicitly: Google
+    sets it false for accounts whose address has not been confirmed, and an
+    unverified address would otherwise let anyone claim someone else's login.
     """
-    if not GOOGLE_CLIENT_ID:
+    if not config.GOOGLE_CLIENT_ID:
         raise ValueError("GOOGLE_CLIENT_ID is not configured")
     try:
         info = id_token.verify_oauth2_token(
-            token, google_requests.Request(), GOOGLE_CLIENT_ID
+            token, google_requests.Request(), config.GOOGLE_CLIENT_ID
         )
     except ValueError as exc:
         raise ValueError("Invalid Google token") from exc
 
+    if not info.get("email_verified"):
+        raise ValueError("Google email is not verified")
+
+    email = (info.get("email") or "").strip().lower()
+    if not email:
+        raise ValueError("Google account has no email")
+
     # Only identity fields are taken from Google. Never a role.
     return {
         "sub": info["sub"],
-        "email": info.get("email", ""),
-        "name": info.get("name", ""),
+        "email": email,
+        "name": (info.get("name") or "").strip() or email.split("@")[0],
         "picture": info.get("picture"),
     }
 
@@ -67,11 +68,11 @@ def build_google_auth_url(state: str) -> str:
     it untouched to the callback, which must compare it before proceeding.
     Raises ValueError if GOOGLE_CLIENT_ID is not configured.
     """
-    if not GOOGLE_CLIENT_ID:
+    if not config.GOOGLE_CLIENT_ID:
         raise ValueError("GOOGLE_CLIENT_ID is not configured")
     params = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "client_id": config.GOOGLE_CLIENT_ID,
+        "redirect_uri": config.GOOGLE_REDIRECT_URI,
         "response_type": "code",
         "scope": GOOGLE_SCOPES,
         "state": state,
@@ -89,22 +90,26 @@ def exchange_code_for_identity(code: str) -> dict:
     Returns the same identity dict as verify_google_token().
     Raises ValueError if the exchange fails or the ID token is invalid.
     """
-    if not GOOGLE_CLIENT_SECRET:
+    if not config.GOOGLE_CLIENT_SECRET:
         raise ValueError("GOOGLE_CLIENT_SECRET is not configured")
+    if not config.GOOGLE_CLIENT_ID:
+        raise ValueError("GOOGLE_CLIENT_ID is not configured")
+
     try:
         response = requests.post(
             GOOGLE_TOKEN_ENDPOINT,
             data={
                 "code": code,
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "client_id": config.GOOGLE_CLIENT_ID,
+                "client_secret": config.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": config.GOOGLE_REDIRECT_URI,
                 "grant_type": "authorization_code",
             },
             timeout=10,
         )
     except requests.RequestException as exc:
         raise ValueError("Google token exchange failed") from exc
+
     if response.status_code != 200:
         # Google's error body explains the real cause, e.g.:
         # - invalid_grant        -> the code was already used or expired
@@ -114,9 +119,20 @@ def exchange_code_for_identity(code: str) -> dict:
             f"Google token exchange failed: {response.status_code} {response.text}"
         )
 
-    id_token_value = response.json().get("id_token")
+    # Google reports a user-declined consent as HTTP 400 with a JSON error
+    # body, so reading .json() safely matters: an HTML error page from a proxy
+    # in front of Google must not raise an unhandled ValueError here.
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError("Google token exchange failed") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Google token exchange failed")
+
+    id_token_value = payload.get("id_token")
     if not id_token_value:
         raise ValueError("Google token exchange failed")
 
-    # Same verification (signature, expiry, audience) as the API flow.
+    # Same verification (signature, expiry, audience, email_verified) as the
+    # API flow.
     return verify_google_token(id_token_value)
