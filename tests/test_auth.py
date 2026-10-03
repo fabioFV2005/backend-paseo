@@ -22,12 +22,20 @@ def client():
     return app_module.app.test_client()
 
 
-def fake_google_login(client, monkeypatch, sub, email="user@example.com", name="Test User", extra_body=None):
+def fake_google_login(
+    client,
+    monkeypatch,
+    sub,
+    email="user@example.com",
+    name="Test User",
+    picture="https://photos.example.com/pic.jpg",
+    extra_body=None,
+):
     """Log in via /auth/google with a stubbed Google token verification."""
     monkeypatch.setattr(
         app_module,
         "verify_google_token",
-        lambda token: {"sub": sub, "email": email, "name": name},
+        lambda token: {"sub": sub, "email": email, "name": name, "picture": picture},
     )
     body = {"token": "fake-google-token"}
     if extra_body:
@@ -59,7 +67,7 @@ def test_google_never_determines_role(client, monkeypatch):
     monkeypatch.setattr(
         app_module,
         "verify_google_token",
-        lambda token: {"sub": "google-3", "email": "e@x.com", "name": "N", "role": "ADMIN"},
+        lambda token: {"sub": "google-3", "email": "e@x.com", "name": "N", "picture": None, "role": "ADMIN"},
     )
     response = client.post("/auth/google", json={"token": "fake"})
     assert response.status_code == 200
@@ -190,3 +198,82 @@ def test_set_user_role_rejects_invalid_role():
     user = get_or_create_google_user("google-16", "e@x.com", "N")
     with pytest.raises(ValueError):
         set_user_role(user.id, "SUPERUSER")
+
+
+# --- Google profile picture -----------------------------------------------------
+
+
+def test_profile_picture_is_saved_and_returned(client, monkeypatch):
+    data = fake_google_login(
+        client, monkeypatch, sub="google-pic-1", picture="https://photos.example.com/me.jpg"
+    )
+    assert data["user"]["picture"] == "https://photos.example.com/me.jpg"
+
+
+def test_profile_picture_is_refreshed_on_next_login(client, monkeypatch):
+    fake_google_login(client, monkeypatch, sub="google-pic-2", picture="https://photos.example.com/old.jpg")
+    data = fake_google_login(client, monkeypatch, sub="google-pic-2", picture="https://photos.example.com/new.jpg")
+    assert data["user"]["picture"] == "https://photos.example.com/new.jpg"
+
+
+def test_profile_picture_may_be_absent(client, monkeypatch):
+    # Google omits "picture" for accounts without a profile photo.
+    data = fake_google_login(client, monkeypatch, sub="google-pic-3", picture=None)
+    assert data["user"]["picture"] is None
+
+
+# --- Location --------------------------------------------------------------------
+
+
+def test_new_user_has_no_location(client, monkeypatch):
+    data = fake_google_login(client, monkeypatch, sub="google-loc-1")
+    assert data["user"]["latitude"] is None
+    assert data["user"]["longitude"] is None
+
+
+def test_update_location(client, monkeypatch):
+    data = fake_google_login(client, monkeypatch, sub="google-loc-2")
+    response = client.put(
+        "/me/location",
+        json={"latitude": 4.611, "longitude": -74.081},
+        headers=auth_header(data["token"]),
+    )
+    assert response.status_code == 200
+    assert response.get_json()["user"]["latitude"] == 4.611
+    assert response.get_json()["user"]["longitude"] == -74.081
+
+
+def test_update_location_rejects_out_of_range(client, monkeypatch):
+    data = fake_google_login(client, monkeypatch, sub="google-loc-3")
+    response = client.put(
+        "/me/location",
+        json={"latitude": 123, "longitude": 0},
+        headers=auth_header(data["token"]),
+    )
+    assert response.status_code == 400
+
+
+def test_update_location_requires_coordinates(client, monkeypatch):
+    data = fake_google_login(client, monkeypatch, sub="google-loc-4")
+    response = client.put("/me/location", json={}, headers=auth_header(data["token"]))
+    assert response.status_code == 400
+
+
+def test_update_location_requires_auth(client):
+    response = client.put("/me/location", json={"latitude": 0, "longitude": 0})
+    assert response.status_code == 401
+
+
+def test_me_includes_picture_and_location(client, monkeypatch):
+    data = fake_google_login(
+        client, monkeypatch, sub="google-me-1", picture="https://photos.example.com/p.jpg"
+    )
+    client.put(
+        "/me/location",
+        json={"latitude": 1.5, "longitude": 2.5},
+        headers=auth_header(data["token"]),
+    )
+    profile = client.get("/me", headers=auth_header(data["token"])).get_json()
+    assert profile["picture"] == "https://photos.example.com/p.jpg"
+    assert profile["latitude"] == 1.5
+    assert profile["longitude"] == 2.5

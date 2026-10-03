@@ -38,7 +38,8 @@ GOOGLE_SCOPES = "openid email profile"
 def verify_google_token(token: str) -> dict:
     """Verify a Google ID token and return the user's identity.
 
-    Returns a dict with only: sub, email, name.
+    Returns a dict with only: sub, email, name, picture (profile photo URL,
+    or None if the Google account has none).
     Raises ValueError if the token is invalid or expired.
     """
     if not GOOGLE_CLIENT_ID:
@@ -55,6 +56,7 @@ def verify_google_token(token: str) -> dict:
         "sub": info["sub"],
         "email": info.get("email", ""),
         "name": info.get("name", ""),
+        "picture": info.get("picture"),
     }
 
 

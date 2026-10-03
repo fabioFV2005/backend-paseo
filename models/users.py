@@ -1,67 +1,151 @@
-"""User storage.
+"""User storage backed by PostgreSQL.
 
-For simplicity this uses an in-memory store. In a real deployment, replace
-these functions with database queries — the rest of the code (auth, roles,
-routes) stays exactly the same.
+The rest of the code (auth, roles, routes) only talks to the functions in
+this module — nothing else may write a user's role.
 
-IMPORTANT: this module is the single place where roles are written. Nobody
-else may set a user's role.
+- Every new user is registered automatically with UserRole.USER (the
+  "client" role). Google and the frontend have no say in this.
+- SELLER/ADMIN are assigned only manually, directly in the database:
+
+      UPDATE users SET role = 'ADMIN' WHERE email = 'you@example.com';
+
+  The role is read from the database on every request, so a manual change
+  applies immediately — even to tokens issued before it.
 """
 
-from dataclasses import dataclass
-from itertools import count
-from typing import Dict, Optional
+import os
+from typing import Optional
+
+from dotenv import load_dotenv
+from sqlalchemy import Column, Enum, Float, Integer, String, create_engine, delete, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 from roles import UserRole
 
+load_dotenv()
 
-@dataclass
-class User:
-    id: int
-    email: str
-    name: str
-    role: UserRole
-    google_sub: Optional[str] = None  # Google's unique subject id for this user
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not configured. Add it to your .env file, e.g.:\n"
+        "  DATABASE_URL=postgresql+psycopg://postgres:root@localhost:5432/hackaton"
+    )
+
+# pool_pre_ping drops stale connections instead of failing mid-request.
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+# expire_on_commit=False keeps attributes readable after the session closes,
+# so callers can use the returned User objects freely.
+SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+Base = declarative_base()
 
 
-# --- In-memory "database" ---------------------------------------------------
+class User(Base):
+    __tablename__ = "users"
 
-_id_counter = count(start=1)
-_users_by_id: Dict[int, User] = {}
-_user_ids_by_google_sub: Dict[str, int] = {}
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False, default="")
+    # Stored as VARCHAR with a CHECK constraint (values: USER, SELLER, ADMIN),
+    # so manual SQL updates with invalid values are rejected by Postgres.
+    role = Column(
+        Enum(UserRole, native_enum=False, create_constraint=True),
+        nullable=False,
+        default=UserRole.USER,
+        server_default=UserRole.USER.name,
+    )
+    google_sub = Column(String(255), unique=True, nullable=True, index=True)
+    # URL of the Google profile photo (None if the account has none).
+    picture = Column(String(512), nullable=True)
+    # Last known location, set from the device (never comes from Google).
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+
+
+# Create the table on startup if it doesn't exist yet.
+Base.metadata.create_all(engine)
 
 
 def find_user_by_id(user_id: int) -> Optional[User]:
-    return _users_by_id.get(user_id)
+    with SessionLocal() as session:
+        user = session.get(User, user_id)
+        if user is not None:
+            session.expunge(user)
+        return user
 
 
 def find_user_by_google_sub(google_sub: str) -> Optional[User]:
-    user_id = _user_ids_by_google_sub.get(google_sub)
-    return _users_by_id.get(user_id) if user_id is not None else None
+    with SessionLocal() as session:
+        user = session.execute(
+            select(User).where(User.google_sub == google_sub)
+        ).scalar_one_or_none()
+        if user is not None:
+            session.expunge(user)
+        return user
 
 
-def get_or_create_google_user(google_sub: str, email: str, name: str) -> User:
+def get_or_create_google_user(
+    google_sub: str, email: str, name: str, picture: Optional[str] = None
+) -> User:
     """Return the user for this Google account, creating it on first login.
 
     - A brand-new user ALWAYS gets UserRole.USER. Google and the frontend
       have no say in this: the role is hardcoded here.
-    - An existing user is returned unchanged, so their current role
-      (USER, SELLER or ADMIN) is always kept and never reset.
+    - An existing user keeps their role (USER, SELLER or ADMIN) untouched —
+      it is never reset. Only the profile fields (email/name/picture) are
+      refreshed, because Google is the source of truth for those.
     """
-    existing = find_user_by_google_sub(google_sub)
-    if existing is not None:
-        return existing
+    with SessionLocal() as session:
+        user = session.execute(
+            select(User).where(User.google_sub == google_sub)
+        ).scalar_one_or_none()
 
-    user = User(
-        id=next(_id_counter),
-        email=email,
-        name=name,
-        role=UserRole.USER,  # default role — the ONLY role ever assigned automatically
-        google_sub=google_sub,
-    )
-    _users_by_id[user.id] = user
-    _user_ids_by_google_sub[google_sub] = user.id
-    return user
+        if user is not None:
+            user.email = email
+            user.name = name
+            user.picture = picture
+            session.commit()
+            session.expunge(user)
+            return user
+
+        user = User(
+            email=email,
+            name=name,
+            picture=picture,
+            role=UserRole.USER,  # default role — the ONLY role ever assigned automatically
+            google_sub=google_sub,
+        )
+        session.add(user)
+        try:
+            session.commit()
+        except IntegrityError:
+            # A concurrent request created this Google account first — just read it.
+            session.rollback()
+            user = session.execute(
+                select(User).where(User.google_sub == google_sub)
+            ).scalar_one()
+        session.expunge(user)
+        return user
+
+
+def update_user_location(user_id: int, latitude: float, longitude: float) -> User:
+    """Set the user's last known location (sent by the device, not Google).
+
+    Raises ValueError if the coordinates are out of range.
+    """
+    if not (-90 <= latitude <= 90):
+        raise ValueError(f"Invalid latitude: {latitude!r} (must be between -90 and 90)")
+    if not (-180 <= longitude <= 180):
+        raise ValueError(f"Invalid longitude: {longitude!r} (must be between -180 and 180)")
+    with SessionLocal() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            raise LookupError(f"User {user_id} not found")
+        user.latitude = latitude
+        user.longitude = longitude
+        session.commit()
+        session.expunge(user)
+        return user
 
 
 def set_user_role(user_id: int, role: UserRole) -> User:
@@ -74,16 +158,19 @@ def set_user_role(user_id: int, role: UserRole) -> User:
     """
     if not isinstance(role, UserRole):
         raise ValueError(f"Invalid role: {role!r}")
-    user = find_user_by_id(user_id)
-    if user is None:
-        raise LookupError(f"User {user_id} not found")
-    user.role = role
-    return user
+    with SessionLocal() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            raise LookupError(f"User {user_id} not found")
+        user.role = role
+        session.commit()
+        session.expunge(user)
+        return user
 
 
 def reset_store() -> None:
-    """Clear the store. Only used by tests."""
-    global _id_counter
-    _users_by_id.clear()
-    _user_ids_by_google_sub.clear()
-    _id_counter = count(start=1)
+    """Delete ALL users. Only used by tests, which run against a throwaway
+    database (see tests/conftest.py) — never against real data."""
+    with SessionLocal() as session:
+        session.execute(delete(User))
+        session.commit()

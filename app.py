@@ -17,7 +17,7 @@ from auth import (
     set_session_cookie,
 )
 from google_auth import build_google_auth_url, exchange_code_for_identity, verify_google_token
-from models.users import User, get_or_create_google_user
+from models.users import User, get_or_create_google_user, update_user_location
 from roles import UserRole
 
 app = Flask(__name__)
@@ -42,6 +42,19 @@ def landing_url_for(user: User) -> str:
     if user.role is UserRole.SELLER:
         return url_for("seller_dashboard")
     return url_for("hello_world")
+
+
+def user_payload(user: User) -> dict:
+    """Public JSON representation of a user (used by /auth/google and /me)."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role.value,
+        "picture": user.picture,
+        "latitude": user.latitude,
+        "longitude": user.longitude,
+    }
 
 
 @app.route("/")
@@ -99,7 +112,7 @@ def google_oauth_callback():
         return redirect(url_for("login", error="google"))
 
     try:
-        identity = exchange_code_for_identity(code)  # returns only sub/email/name
+        identity = exchange_code_for_identity(code)  # returns only sub/email/name/picture
     except ValueError:
         return redirect(url_for("login", error="google"))
 
@@ -107,6 +120,7 @@ def google_oauth_callback():
         google_sub=identity["sub"],
         email=identity["email"],
         name=identity["name"],
+        picture=identity["picture"],
     )
 
     response = redirect(landing_url_for(user))
@@ -131,7 +145,7 @@ def google_login():
         return jsonify({"error": "Missing Google ID token"}), 400
 
     try:
-        identity = verify_google_token(token)  # returns only sub/email/name
+        identity = verify_google_token(token)  # returns only sub/email/name/picture
     except ValueError:
         return jsonify({"error": "Invalid Google token"}), 401
 
@@ -139,23 +153,44 @@ def google_login():
         google_sub=identity["sub"],
         email=identity["email"],
         name=identity["name"],
+        picture=identity["picture"],
     )
 
-    return jsonify(
-        {
-            "token": create_token(user),
-            "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role.value},
-        }
-    )
+    return jsonify({"token": create_token(user), "user": user_payload(user)})
 
 
 @app.route("/me")
 def me():
-    """Any authenticated user can see their own profile (id + role)."""
+    """Any authenticated user can see their own profile."""
     user = get_current_user()
     if user is None:
         return jsonify({"error": "Authentication required"}), 401
-    return jsonify({"id": user.id, "email": user.email, "name": user.name, "role": user.role.value})
+    return jsonify(user_payload(user))
+
+
+@app.route("/me/location", methods=["POST", "PUT"])
+def update_my_location():
+    """Save the authenticated user's location (sent by the device's GPS).
+
+    Body JSON: {"latitude": 4.611, "longitude": -74.081}
+    """
+    user = get_current_user()
+    if user is None:
+        return jsonify({"error": "Authentication required"}), 401
+
+    data = request.get_json(silent=True) or {}
+    try:
+        latitude = float(data["latitude"])
+        longitude = float(data["longitude"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "latitude and longitude (numbers) are required"}), 400
+
+    try:
+        user = update_user_location(user.id, latitude, longitude)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({"user": user_payload(user)})
 
 
 @app.route("/seller/dashboard")
