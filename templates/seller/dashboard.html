@@ -1,0 +1,78 @@
+{% extends "common/base.html" %}
+
+{% block title %}Seller dashboard · Paseo{% endblock %}
+
+{% block nav %}
+<nav aria-label="Seller sections">
+  <a class="nav-link is-active" href="{{ url_for('seller_dashboard') }}" aria-current="page">Dashboard</a>
+  <a class="nav-link" href="{{ url_for('home') }}">Storefront</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <h1 class="page-title">Seller dashboard</h1>
+  <p class="page-sub">Welcome back, {{ user.name.split(' ')[0] }}. Here is how your store is doing today.</p>
+</header>
+
+<div class="kpi-grid">
+  <div class="kpi">
+    <p class="kpi-label">Revenue today</p>
+    <p class="kpi-value">$1,248.50</p>
+    <p class="kpi-delta is-up">+12.4% vs yesterday</p>
+  </div>
+  <div class="kpi">
+    <p class="kpi-label">Orders</p>
+    <p class="kpi-value">32</p>
+    <p class="kpi-delta is-up">+5 new today</p>
+  </div>
+  <div class="kpi">
+    <p class="kpi-label">Active products</p>
+    <p class="kpi-value">18</p>
+    <p class="kpi-delta is-down">2 out of stock</p>
+  </div>
+  <div class="kpi">
+    <p class="kpi-label">Store rating</p>
+    <p class="kpi-value">4.8</p>
+    <p class="kpi-delta is-up">126 reviews</p>
+  </div>
+</div>
+
+<section class="card" aria-labelledby="orders-title">
+  <div class="card-head">
+    <h2 class="card-title" id="orders-title">Recent orders</h2>
+    <span class="card-note">Last updated 5 min ago</span>
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Order</th>
+          <th scope="col">Customer</th>
+          <th scope="col">Product</th>
+          <th scope="col" class="num">Total</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set orders = [
+          ("#PS-1042", "María Fernanda R.", "Single-origin coffee — Huila ×2", "$25.00", "Paid", "badge-info"),
+          ("#PS-1041", "Carlos Gómez", "Urban backpack 20L", "$64.00", "Shipped", "badge-success"),
+          ("#PS-1040", "Lucía Torres", "Handwoven Wayuu tote", "$38.00", "Pending", "badge-warning"),
+          ("#PS-1039", "Andrés Peña", "Ceramic pour-over set", "$45.00", "Shipped", "badge-success"),
+          ("#PS-1038", "Valentina Ruiz", "Running sneakers — Terra", "$89.90", "Paid", "badge-info")
+        ] %}
+        {% for order_id, customer, product, total, status, badge in orders %}
+        <tr>
+          <td class="cell-strong">{{ order_id }}</td>
+          <td>{{ customer }}</td>
+          <td class="cell-muted">{{ product }}</td>
+          <td class="num cell-strong">{{ total }}</td>
+          <td><span class="badge {{ badge }}">{{ status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

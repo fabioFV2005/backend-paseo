@@ -1,113 +1,138 @@
 """JWT authentication and role-based authorization.
 
-- create_token(): issues a JWT containing the user's id and role.
-- get_current_user(): reads the JWT from the Authorization header and
-  returns the authenticated User (or None).
-- require_role(...): decorator that allows only the given roles.
-- require_admin / require_seller: ready-made decorators.
+- create_token(): issues a JWT carrying the user's id.
+- load_current_user(): runs once per request, resolves the token into
+  ``g.current_user``.
+- require_role(...): decorator allowing only the given roles.
 
-The user's id and role are read from the database on every request, so a
-role change takes effect immediately even for tokens issued earlier.
+Two design decisions that are load-bearing:
+
+1. **The role claim in the JWT is ignored.** ``create_token`` writes it for
+   debugging convenience, but ``load_current_user`` never reads it: it re-reads
+   the role from the database on every request. A role change therefore takes
+   effect immediately, even for tokens issued 24 hours earlier, and a token
+   whose ``role`` claim was edited cannot escalate anything. ``test_role_claim_
+   is_ignored_when_forging_a_token`` pins this behaviour.
+
+2. **The token only carries an id, nothing else.** No email, no name, no points.
+   Anything sensitive is fetched fresh from the database, so a stale token can
+   never present stale personal data.
 """
 
 import datetime
-import os
 from functools import wraps
 from typing import Optional
 
 import jwt
-from flask import g, jsonify, request
+from flask import current_app, g, jsonify, request
 
+import config
+from models import User, find_user_by_id
 from roles import UserRole
-from models.users import User, find_user_by_id
-
-# Secret used to sign JWTs. Set JWT_SECRET_KEY in the environment in production.
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-me-in-production!")
-JWT_ALGORITHM = "HS256"
-TOKEN_LIFETIME = datetime.timedelta(hours=24)
-
-# HttpOnly cookie that carries the JWT for browser (redirect) sessions.
-# API clients keep using the Authorization header; the cookie is only a
-# fallback so server-rendered pages work without JavaScript.
-SESSION_COOKIE_NAME = "paseo_session"
-# Set SESSION_COOKIE_SECURE=1 in production (HTTPS). Off by default so local
-# http://localhost development works.
-SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "").lower() in {
-    "1",
-    "true",
-    "yes",
-}
 
 
 def create_token(user: User) -> str:
-    """Create a JWT for the given user. The token carries the user's id and role."""
+    """Issue a signed JWT for the given user.
+
+    ``sub`` is the string form of the UUID primary key. ``role`` is included
+    purely so a decoded token is readable in a console; nothing trusts it.
+    """
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         "sub": str(user.id),
-        "role": user.role.value,
+        "role": user.role_enum.value,
         "iat": now,
-        "exp": now + TOKEN_LIFETIME,
+        "exp": now + datetime.timedelta(hours=config.TOKEN_LIFETIME_HOURS),
     }
-    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, config.JWT_SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 
-def get_current_user() -> Optional[User]:
-    """Return the authenticated user based on the request's JWT.
+def extract_token() -> Optional[str]:
+    """Read the JWT from the Authorization header, falling back to the cookie.
 
-    The token is read from the Authorization header first
-    (Authorization: Bearer <token>), falling back to the session cookie
-    set by the browser login flow.
-    Returns None if no token is present, the token is invalid/expired,
-    or the user no longer exists.
+    The header wins so an API client is never silently overridden by a stale
+    browser cookie left over from a previous login in the same browser.
     """
-    token = _extract_token()
-    if not token:
-        return None
-
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-    except jwt.PyJWTError:
-        return None
-
-    try:
-        user_id = int(payload["sub"])
-    except (KeyError, TypeError, ValueError):
-        return None
-
-    # The database is the source of truth for the role, so a manually
-    # assigned SELLER/ADMIN role applies immediately to existing tokens.
-    return find_user_by_id(user_id)
-
-
-def _extract_token() -> Optional[str]:
-    """Read the JWT from the Authorization header, or from the session cookie."""
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
     if scheme.lower() == "bearer" and token:
-        return token
-    return request.cookies.get(SESSION_COOKIE_NAME)
+        return token.strip()
+    return request.cookies.get(config.SESSION_COOKIE_NAME)
+
+
+def resolve_token_user(token: str) -> Optional[User]:
+    """Validate a raw JWT and return the user it identifies, or None."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(
+            token,
+            config.JWT_SECRET_KEY,
+            algorithms=[config.JWT_ALGORITHM],
+        )
+    except jwt.PyJWTError:
+        # Covers bad signature, expired, malformed, wrong algorithm. Any of
+        # those means "not authenticated"; the reason is never sent to the
+        # client because it only helps an attacker.
+        return None
+
+    subject = payload.get("sub")
+    if not isinstance(subject, str):
+        return None
+    return find_user_by_id(subject)
+
+
+def load_current_user() -> None:
+    """Populate ``g.current_user`` once per request.
+
+    Registered as a ``before_request`` hook by the app factory, so every route
+    can read ``g.current_user`` without caring whether it is protected. It is
+    None for anonymous requests.
+    """
+    g.current_user = resolve_token_user(extract_token())
+
+
+def get_current_user() -> Optional[User]:
+    """The authenticated user for this request, or None.
+
+    Works outside a request context too (returns None), so it is safe to call
+    from anywhere without guarding.
+    """
+    return getattr(g, "current_user", None)
 
 
 def set_session_cookie(response, token: str) -> None:
-    """Attach the JWT to a response as an HttpOnly session cookie.
+    """Attach the JWT to a response as an HttpOnly cookie.
 
-    HttpOnly keeps the token away from JavaScript; SameSite=Lax lets the
-    cookie survive the top-level redirect back from Google while blocking
-    cross-site subrequests.
+    HttpOnly keeps the token away from JavaScript, so an XSS bug cannot read
+    it. SameSite=Lax lets the cookie survive the top-level redirect back from
+    Google while blocking cross-site subrequests.
     """
     response.set_cookie(
-        SESSION_COOKIE_NAME,
+        config.SESSION_COOKIE_NAME,
         token,
-        max_age=int(TOKEN_LIFETIME.total_seconds()),
+        max_age=config.TOKEN_LIFETIME_HOURS * 3600,
         httponly=True,
         samesite="Lax",
-        secure=SESSION_COOKIE_SECURE,
+        secure=config.SESSION_COOKIE_SECURE,
         path="/",
     )
 
 
+def clear_session_cookie(response) -> None:
+    """Remove the session cookie. Must mirror set_session_cookie's arguments or
+    the browser keeps the original cookie."""
+    response.delete_cookie(
+        config.SESSION_COOKIE_NAME,
+        path="/",
+        secure=config.SESSION_COOKIE_SECURE,
+        samesite="Lax",
+        httponly=True,
+    )
+
+
 def require_role(*allowed_roles: UserRole):
-    """Decorator: allow access only to users whose role is one of allowed_roles.
+    """Decorator: allow access only to users whose role is in ``allowed_roles``.
 
     Example:
         @require_role(UserRole.SELLER, UserRole.ADMIN)
@@ -122,7 +147,7 @@ def require_role(*allowed_roles: UserRole):
             user = get_current_user()
             if user is None:
                 return jsonify({"error": "Authentication required"}), 401
-            if user.role not in allowed_roles:
+            if user.role_enum not in allowed_roles:
                 return jsonify({"error": "Insufficient permissions"}), 403
             g.current_user = user
             return view(*args, **kwargs)
@@ -132,6 +157,9 @@ def require_role(*allowed_roles: UserRole):
     return decorator
 
 
-# Ready-made decorators for the common cases. Usage: @require_admin
+# Ready-made decorators for the common cases.
 require_admin = require_role(UserRole.ADMIN)
 require_seller = require_role(UserRole.SELLER)
+# An endpoint that lets a business act on its own catalog, but also lets the
+# Paseo admin snoop/act on any of them.
+require_seller_or_admin = require_role(UserRole.SELLER, UserRole.ADMIN)

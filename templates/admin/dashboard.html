@@ -1,0 +1,112 @@
+{% extends "common/base.html" %}
+
+{% block title %}Admin dashboard · Paseo{% endblock %}
+
+{% block nav %}
+<nav aria-label="Admin sections">
+  <a class="nav-link is-active" href="{{ url_for('admin_dashboard') }}" aria-current="page">Dashboard</a>
+  <a class="nav-link" href="{{ url_for('home') }}">Storefront</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <h1 class="page-title">Admin dashboard</h1>
+  <p class="page-sub">Marketplace health at a glance, {{ user.name.split(' ')[0] }}.</p>
+</header>
+
+<div class="kpi-grid">
+  <div class="kpi">
+    <p class="kpi-label">Total users</p>
+    <p class="kpi-value">2,431</p>
+    <p class="kpi-delta is-up">+84 this week</p>
+  </div>
+  <div class="kpi">
+    <p class="kpi-label">Active sellers</p>
+    <p class="kpi-value">186</p>
+    <p class="kpi-delta is-up">+7 this week</p>
+  </div>
+  <div class="kpi">
+    <p class="kpi-label">Products listed</p>
+    <p class="kpi-value">5,912</p>
+    <p class="kpi-delta is-up">+210 this week</p>
+  </div>
+  <div class="kpi">
+    <p class="kpi-label">Revenue (30d)</p>
+    <p class="kpi-value">$48,320</p>
+    <p class="kpi-delta is-up">+9.1% vs prior 30d</p>
+  </div>
+</div>
+
+<section class="card" aria-labelledby="users-title">
+  <div class="card-head">
+    <h2 class="card-title" id="users-title">Latest sign-ups</h2>
+    <span class="card-note">Newest first</span>
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Email</th>
+          <th scope="col">Role</th>
+          <th scope="col">Joined</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set signups = [
+          ("María Fernanda Ríos", "mafe.rios@example.com", "USER", "badge-neutral", "Today, 09:41"),
+          ("Café Andino", "hola@cafeandino.co", "SELLER", "badge-info", "Today, 08:17"),
+          ("Julián Castro", "julian.castro@example.com", "USER", "badge-neutral", "Yesterday, 18:02"),
+          ("Camila Herrera", "camila.h@example.com", "USER", "badge-neutral", "Yesterday, 12:44"),
+          ("Mochilas Andinas", "ventas@mochilasandinas.co", "SELLER", "badge-info", "Oct 1, 16:20")
+        ] %}
+        {% for name, email, role, badge, joined in signups %}
+        <tr>
+          <td class="cell-strong">{{ name }}</td>
+          <td class="cell-muted">{{ email }}</td>
+          <td><span class="badge {{ badge }}">{{ role }}</span></td>
+          <td class="cell-muted">{{ joined }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="categories-title">
+  <div class="card-head">
+    <h2 class="card-title" id="categories-title">Top categories</h2>
+    <span class="card-note">By sales, last 30 days</span>
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Category</th>
+          <th scope="col" class="num">Products</th>
+          <th scope="col" class="num">Orders</th>
+          <th scope="col" class="num">Revenue</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set categories = [
+          ("Coffee & food", "812", "1,204", "$14,860"),
+          ("Fashion", "1,430", "986", "$12,410"),
+          ("Tech", "968", "742", "$11,235"),
+          ("Home & garden", "1,105", "533", "$6,180"),
+          ("Sports", "694", "421", "$3,635")
+        ] %}
+        {% for name, products, orders, revenue in categories %}
+        <tr>
+          <td class="cell-strong">{{ name }}</td>
+          <td class="num">{{ products }}</td>
+          <td class="num">{{ orders }}</td>
+          <td class="num cell-strong">{{ revenue }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,6 +1,35 @@
-Flask==3.1.3
-PyJWT==2.15.1
-google-auth==2.50.0
-requests==2.32.5
-python-dotenv==1.2.1
-pytest==8.4.2
+# Verified on Python 3.13. These are the exact versions the 93-test suite was
+# run against, so `pip install -r requirements.txt` reproduces a known-good
+# environment rather than a plausible-looking one.
+#
+# Flask itself is held at 2.3.x deliberately: Flask-SQLAlchemy 3.1 and this
+# codebase work on it, and pinning avoids picking up an untested major.
+
+Flask==2.3.3
+Werkzeug==3.1.3
+
+# Persistence. Flask-SQLAlchemy for the ORM and session handling,
+# psycopg2-binary for PostgreSQL (the binary wheel avoids needing a compiler,
+# which matters on Windows).
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.44
+psycopg2-binary==2.9.13
+
+# Only needed when the frontend runs on a different origin than the API. Left in
+# anyway so the cross-origin setup is reproducible without extra steps.
+Flask-Cors==4.0.0
+
+# Rate limiting on the endpoints an unauthenticated caller can hammer: the
+# Google login endpoint and the QR scan endpoint. The default in-process
+# storage is fine for a single dev server; point RATELIMIT_STORAGE_URI at
+# Redis before running multiple workers.
+Flask-Limiter==4.1.1
+
+# Login is Google-only, so this is a runtime dependency and not optional.
+PyJWT==2.13.0
+google-auth==2.40.3
+requests==2.31.0
+python-dotenv==1.0.0
+
+# Tests. `pythonpath` in pytest.ini needs pytest >= 7.
+pytest==7.4.3

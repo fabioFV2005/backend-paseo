@@ -8,11 +8,15 @@ backend (never by Google, never by the frontend):
 - ADMIN:  assigned only manually through a protected administrative process.
 """
 
-from enum import Enum
+from enums import StrEnum
 
 
-class UserRole(str, Enum):
-    """All possible user roles. Inherits from str so it is easy to put in a JWT/JSON."""
+class UserRole(StrEnum):
+    """All possible user roles. Inherits from str so it is easy to put in a JWT/JSON.
+
+    The values are the ones stored in the database CHECK constraint and returned
+    by the API. Do not rename them without a migration.
+    """
 
     USER = "USER"
     SELLER = "SELLER"
