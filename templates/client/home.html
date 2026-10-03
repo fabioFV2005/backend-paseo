@@ -1,0 +1,70 @@
+{% extends "common/base.html" %}
+
+{% block title %}Paseo — Shop{% endblock %}
+
+{% block content %}
+<section class="hero">
+  {% if user %}
+    <h1 class="hero-title">Good to see you, {{ user.name.split(' ')[0] }}.</h1>
+    <p class="hero-sub">Fresh picks from local sellers near you, updated this morning.</p>
+  {% else %}
+    <h1 class="hero-title">Everything your neighborhood sells, in one place.</h1>
+    <p class="hero-sub">Sign in with Google to buy from local sellers, track your orders and save your favorites.</p>
+  {% endif %}
+
+  <form class="search" role="search" action="{{ url_for('home') }}" method="get">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#666666" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="5.25"></circle>
+      <path d="M11 11l3.25 3.25"></path>
+    </svg>
+    <input type="search" name="q" placeholder="Search products, stores, categories&hellip;" aria-label="Search products">
+  </form>
+
+  <ul class="chips" aria-label="Categories">
+    <li class="chip is-active">All</li>
+    <li class="chip">Tech</li>
+    <li class="chip">Fashion</li>
+    <li class="chip">Home &amp; garden</li>
+    <li class="chip">Sports</li>
+    <li class="chip">Books</li>
+    <li class="chip">Coffee &amp; food</li>
+  </ul>
+</section>
+
+<section aria-labelledby="featured-title">
+  <div class="section-head">
+    <h2 class="section-title" id="featured-title">Featured this week</h2>
+    <span class="section-note">Handpicked by local sellers</span>
+  </div>
+
+  <div class="product-grid">
+    {% set products = [
+      ("Single-origin coffee — Huila", "$12.50", "Café Andino", "#f0ece5"),
+      ("Handwoven Wayuu tote", "$38.00", "Artesanías del Norte", "#eef0ee"),
+      ("Running sneakers — Terra", "$89.90", "Deportes El Parque", "#eceef0"),
+      ("Ceramic pour-over set", "$45.00", "Casa Barro", "#f2eeea"),
+      ("Noise-cancelling headphones", "$129.00", "TecnoCentro", "#ededef"),
+      ("Linen shirt — Sand", "$52.00", "Hilo y Agave", "#f1efe9"),
+      ("Urban backpack 20L", "$64.00", "Mochilas Andinas", "#eeede9"),
+      ("Honey — Sierra Nevada", "$9.80", "Miel Pura", "#f3efe6")
+    ] %}
+    {% for name, price, seller, tile in products %}
+    <article class="product-card">
+      <div class="product-tile" style="--tile: {{ tile }}">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5.5 8h13l-1.1 11.1a1.5 1.5 0 0 1-1.5 1.4H8.1a1.5 1.5 0 0 1-1.5-1.4L5.5 8z"></path>
+          <path d="M8.5 10.5V6.8a3.5 3.5 0 0 1 7 0v3.7"></path>
+        </svg>
+      </div>
+      <div class="product-info">
+        <h3 class="product-name">{{ name }}</h3>
+        <div class="product-meta">
+          <span class="product-price">{{ price }}</span>
+          <span class="product-seller">{{ seller }}</span>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

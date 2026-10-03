@@ -49,6 +49,19 @@ def auth_header(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def fake_google_callback(client, monkeypatch, sub, email="user@example.com", name="Test User", picture=None):
+    """Drive the browser OAuth flow: /auth/google/login then the callback."""
+    monkeypatch.setattr(
+        app_module,
+        "exchange_code_for_identity",
+        lambda code: {"sub": sub, "email": email, "name": name, "picture": picture},
+    )
+    client.get("/auth/google/login")
+    with client.session_transaction() as sess:
+        state = sess["google_oauth_state"]
+    return client.get(f"/auth/google/callback?code=fake-code&state={state}")
+
+
 # --- Registration rules ------------------------------------------------------
 
 
@@ -277,3 +290,62 @@ def test_me_includes_picture_and_location(client, monkeypatch):
     assert profile["picture"] == "https://photos.example.com/p.jpg"
     assert profile["latitude"] == 1.5
     assert profile["longitude"] == 2.5
+
+
+# --- Browser redirect flow (/auth/google/login + /auth/google/callback) ----------
+
+
+def test_google_callback_creates_user_and_sets_session_cookie(client, monkeypatch):
+    response = fake_google_callback(client, monkeypatch, sub="google-cb-1")
+    assert response.status_code == 302
+    # A brand-new user is a plain USER and lands on the default page.
+    location = response.headers["Location"]
+    assert "/admin/dashboard" not in location and "/seller/dashboard" not in location
+    assert "paseo_session" in response.headers.get("Set-Cookie", "")
+
+
+def test_google_callback_existing_admin_goes_to_admin_dashboard(client, monkeypatch):
+    # Regression test: a role manually changed to ADMIN in the DB must NOT
+    # break the browser login — the role plays no part in Google's exchange.
+    user = get_or_create_google_user("google-cb-2", "admin@x.com", "Admin")
+    set_user_role(user.id, UserRole.ADMIN)
+    response = fake_google_callback(
+        client, monkeypatch, sub="google-cb-2", email="admin@x.com", name="Admin"
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin/dashboard")
+    assert "paseo_session" in response.headers.get("Set-Cookie", "")
+
+
+def test_google_callback_existing_seller_goes_to_seller_dashboard(client, monkeypatch):
+    user = get_or_create_google_user("google-cb-3", "seller@x.com", "Seller")
+    set_user_role(user.id, UserRole.SELLER)
+    response = fake_google_callback(
+        client, monkeypatch, sub="google-cb-3", email="seller@x.com", name="Seller"
+    )
+    assert response.headers["Location"].endswith("/seller/dashboard")
+
+
+def test_google_callback_rejects_bad_state(client, monkeypatch):
+    monkeypatch.setattr(
+        app_module,
+        "exchange_code_for_identity",
+        lambda code: {"sub": "x", "email": "x@x.com", "name": "X", "picture": None},
+    )
+    client.get("/auth/google/login")
+    response = client.get("/auth/google/callback?code=fake-code&state=wrong-state")
+    assert response.status_code == 302
+    assert "error=invalid_state" in response.headers["Location"]
+
+
+def test_google_callback_exchange_failure_redirects_with_google_error(client, monkeypatch):
+    def fail_exchange(code):
+        raise ValueError("Google token exchange failed")
+
+    monkeypatch.setattr(app_module, "exchange_code_for_identity", fail_exchange)
+    client.get("/auth/google/login")
+    with client.session_transaction() as sess:
+        state = sess["google_oauth_state"]
+    response = client.get(f"/auth/google/callback?code=fake-code&state={state}")
+    assert response.status_code == 302
+    assert "error=google" in response.headers["Location"]

@@ -10,6 +10,7 @@ from flask import Flask, g, jsonify, redirect, render_template, request, session
 
 from auth import (
     JWT_SECRET_KEY,
+    SESSION_COOKIE_NAME,
     create_token,
     get_current_user,
     require_admin,
@@ -41,7 +42,7 @@ def landing_url_for(user: User) -> str:
         return url_for("admin_dashboard")
     if user.role is UserRole.SELLER:
         return url_for("seller_dashboard")
-    return url_for("hello_world")
+    return url_for("home")
 
 
 def user_payload(user: User) -> dict:
@@ -58,8 +59,21 @@ def user_payload(user: User) -> dict:
 
 
 @app.route("/")
-def hello_world():
-    return "Hello World!"
+def home():
+    """Storefront home — the landing page for USER accounts after login.
+
+    It is also the public face of the shop: anonymous visitors see the same
+    storefront with a sign-in prompt instead of the account menu.
+    """
+    return render_template("client/home.html", user=get_current_user())
+
+
+@app.route("/logout")
+def logout():
+    """Clear the session cookie and return to the storefront."""
+    response = redirect(url_for("home"))
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return response
 
 
 @app.route("/login")
@@ -113,7 +127,9 @@ def google_oauth_callback():
 
     try:
         identity = exchange_code_for_identity(code)  # returns only sub/email/name/picture
-    except ValueError:
+    except ValueError as exc:
+        # Visible in the server console: the real reason Google rejected us.
+        app.logger.warning("Google sign-in failed: %s", exc)
         return redirect(url_for("login", error="google"))
 
     user = get_or_create_google_user(
@@ -196,13 +212,13 @@ def update_my_location():
 @app.route("/seller/dashboard")
 @require_seller
 def seller_dashboard():
-    return jsonify({"message": f"Welcome to the seller dashboard, {g.current_user.name}"})
+    return render_template("seller/dashboard.html", user=g.current_user)
 
 
 @app.route("/admin/dashboard")
 @require_admin
 def admin_dashboard():
-    return jsonify({"message": f"Welcome to the admin dashboard, {g.current_user.name}"})
+    return render_template("admin/dashboard.html", user=g.current_user)
 
 
 if __name__ == "__main__":

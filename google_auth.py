@@ -106,7 +106,13 @@ def exchange_code_for_identity(code: str) -> dict:
     except requests.RequestException as exc:
         raise ValueError("Google token exchange failed") from exc
     if response.status_code != 200:
-        raise ValueError("Google token exchange failed")
+        # Google's error body explains the real cause, e.g.:
+        # - invalid_grant        -> the code was already used or expired
+        # - redirect_uri_mismatch -> GOOGLE_REDIRECT_URI doesn't match the console
+        # - invalid_client       -> wrong/rotated GOOGLE_CLIENT_SECRET
+        raise ValueError(
+            f"Google token exchange failed: {response.status_code} {response.text}"
+        )
 
     id_token_value = response.json().get("id_token")
     if not id_token_value:

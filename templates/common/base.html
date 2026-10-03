@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Paseo{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="{{ url_for('home') }}">Paseo</a>
+
+        {% block nav %}{% endblock %}
+
+        <div class="topbar-user">
+          {% if user %}
+            <span class="user-chip">
+              {% if user.picture %}
+                <img class="avatar" src="{{ user.picture }}" alt="" referrerpolicy="no-referrer">
+              {% else %}
+                <span class="avatar" aria-hidden="true">{{ user.name[:1] | upper }}</span>
+              {% endif %}
+              <span class="user-name">{{ user.name }}</span>
+              <span class="badge {% if user.role.value == 'ADMIN' %}badge-dark{% elif user.role.value == 'SELLER' %}badge-info{% else %}badge-neutral{% endif %}">{{ user.role.value }}</span>
+            </span>
+            <a class="btn-ghost" href="{{ url_for('logout') }}">Log out</a>
+          {% else %}
+            <a class="btn-ghost" href="{{ url_for('login') }}">Sign in</a>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <main class="shell">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="foot">Paseo — your local marketplace</footer>
+  </body>
+</html>
