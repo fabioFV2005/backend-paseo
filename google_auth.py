@@ -14,6 +14,8 @@ Two ways to obtain a verified identity:
   is used ONLY here, on the backend, and is never exposed to the browser.
 """
 
+from urllib.parse import urlencode
+
 import requests
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token

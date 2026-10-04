@@ -15,6 +15,7 @@ schema is created fresh per test by the `app` fixture in conftest.py.
 """
 
 from decimal import Decimal
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import jwt as pyjwt
@@ -523,4 +524,48 @@ def test_google_callback_exchange_failure_redirects_with_google_error(client, mo
     response = client.get(f"/auth/google/callback?code=fake-code&state={state}")
     assert response.status_code == 302
     assert "error=google" in response.headers["Location"]
+
+
+# The callback tests above all start with client.get("/auth/google/login") and
+# throw the response away, reading the state out of the session instead. That
+# hides a broken login route: the state is written before the URL is built, so
+# the callback half of the tests passes even when the redirect half raises.
+#
+# That is not hypothetical. google_auth.build_google_auth_url() called
+# urlencode() without importing it, so /auth/google/login returned 500 for
+# every real user while all eleven of these tests stayed green. These two
+# assert on the redirect itself, which is the part a browser actually hits.
+
+def test_google_login_redirects_to_google(client):
+    response = client.get("/auth/google/login")
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+
+
+def test_google_login_url_carries_every_parameter_google_requires(client, monkeypatch):
+    monkeypatch.setattr(
+        config, "GOOGLE_CLIENT_ID", "123.apps.googleusercontent.com", raising=False
+    )
+    monkeypatch.setattr(
+        config,
+        "GOOGLE_REDIRECT_URI",
+        "http://localhost:5000/auth/google/callback",
+        raising=False,
+    )
+    location = client.get("/auth/google/login").headers["Location"]
+
+    # Google rejects the request outright if any of these is missing or wrong,
+    # and it does so on a screen the user sees, not in a log.
+    query = parse_qs(urlparse(location).query)
+    assert query["client_id"] == ["123.apps.googleusercontent.com"]
+    assert query["redirect_uri"] == ["http://localhost:5000/auth/google/callback"]
+    assert query["response_type"] == ["code"]
+    assert query["scope"] == ["openid email profile"]
+    # prompt=select_account is what lets a user switch accounts without
+    # signing out of Google first.
+    assert query["prompt"] == ["select_account"]
+
+    # The state is the CSRF token; the callback compares it against the session.
+    assert len(query["state"][0]) >= 32
 
