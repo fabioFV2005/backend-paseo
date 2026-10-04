@@ -1,0 +1,146 @@
+# Render Blueprint: the Flask API and its PostgreSQL database, provisioned
+# together from one file (Render dashboard -> New -> Blueprint).
+#
+# Everything here is infrastructure-as-code on purpose. The alternative --
+# clicking the web service and the database separately -- produces the same two
+# resources but leaves the wiring (which DATABASE_URL belongs to which database)
+# living only in the dashboard, where the next person cannot see it.
+#
+# Before the first deploy, fill in the three Google OAuth values marked below,
+# either here or in the dashboard. They are `sync: false` so that a later
+# Blueprint re-apply does not overwrite what you typed in the dashboard.
+
+services:
+  - type: web
+    name: paseo-aranjuez
+    runtime: python
+    plan: free
+
+    # The repository root is `backend/`, so requirements.txt sits next to this
+    # file and no build directory is needed.
+    buildCommand: pip install -r requirements.txt
+
+    # Three things are deliberate here.
+    #
+    # 1. `init-db` and `seed-demo` run before gunicorn because this project has
+    #    no migration tool (see README section 10) -- `create_all()` IS the
+    #    schema deployment step, and `seed-demo` is what fills the catalogue
+    #    that the demo shows. Both are idempotent, so running them on every
+    #    boot is safe and saves a deploy cycle. Render's own
+    #    `preDeployCommand` would be the tidier place for this, but that field
+    #    is rejected on the free plan, and on free there is no shell either --
+    #    which is the only reason the seed lives here instead of in a step you
+    #    run by hand. Drop `seed-demo` once you care about real data.
+    #
+    # 2. `--workers 1` is not a performance setting, it is a correctness one.
+    #    RATELIMIT_STORAGE_URI is `memory://`, which is per-process: with two
+    #    workers each keeps its own tally and the effective limit on
+    #    /auth/google and /api/business/scan doubles, which is exactly the
+    #    abuse those limits exist to stop. Threads still give concurrency,
+    #    because Flask-SQLAlchemy scopes the session per request.
+    #    Raising the worker count means pointing the limiter at Redis first.
+    #
+    # 3. DEMO_LOGIN=1 below keeps the one-click demo buttons working. Turn it
+    #    off and configure Google OAuth once you have a real login to show.
+    startCommand: flask --app app init-db && flask --app app seed-demo && gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 60 app:app
+
+    # Hits Postgres, so a 200 here means the database is actually reachable and
+    # not merely that the process booted.
+    healthCheckPath: /health
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: paseo-aranjuez-db
+          # Yields a `postgresql://` URL. SQLAlchemy resolves that to psycopg2
+          # by default, which is why the `+psycopg2` suffix in .env.example is
+          # not needed here.
+          property: connectionString
+
+      # `generateValue` mints a random value once. `sync: false` stops Render
+      # from regenerating them on the next Blueprint apply, because rotating
+      # SECRET_KEY silently logs everybody out.
+      - key: SECRET_KEY
+        generateValue: true
+        sync: false
+
+      # A second, independent key: config.py refuses to start in production
+      # if this is missing or under 32 characters, and refuses to let it
+      # default to the Flask session key.
+      - key: JWT_SECRET_KEY
+        generateValue: true
+        sync: false
+
+      # --- Google OAuth: fill these in ---------------------------------------
+      # From Google Cloud Console -> APIs & Services -> Credentials -> OAuth
+      # client. Add the value below to the client's authorised redirect URIs.
+      # Left empty the app still boots; the login page just reports sign-in as
+      # unavailable.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      - key: GOOGLE_REDIRECT_URI
+        value: https://paseo-aranjuez.onrender.com/auth/google/callback
+        sync: false
+
+      # --- Runtime behaviour -------------------------------------------------
+      # `production` is the switch that makes config.py demand real secrets
+      # instead of inventing a random one per process, and that disables
+      # `flask dev-token`.
+      - key: FLASK_ENV
+        value: production
+
+      # The demo buttons on the login page POST an email and get a session.
+      # Needed for the pitch, because it works without Google OAuth
+      # configured. Set to "0" once you have OAuth working, or the URL becomes
+      # an open admin login (admin@paseo.test).
+      - key: DEMO_LOGIN
+        value: "1"
+
+      # Render terminates TLS and forwards to gunicorn over plain HTTP, but
+      # the browser only ever sees HTTPS -- so secure cookies are correct here
+      # and would be wrong on a local http:// dev server.
+      - key: SESSION_COOKIE_SECURE
+        value: "1"
+
+      - key: FLASK_DEBUG
+        value: "0"
+
+      - key: SQLALCHEMY_ECHO
+        value: "0"
+
+      - key: TESTING
+        value: "0"
+
+      - key: TOKEN_LIFETIME_HOURS
+        value: "24"
+
+      - key: SCAN_DUPLICATE_WINDOW_SECONDS
+        value: "60"
+
+      # Matches --workers 1 above. See the comment there.
+      - key: RATELIMIT_STORAGE_URI
+        value: memory://
+
+      # Deliberately empty. Flask serves the HTML from its own Jinja
+      # templates, so the browser talks to one origin and needs no CORS
+      # headers at all; config.py leaves the extension uninitialised.
+      - key: CORS_ORIGINS
+        value: ""
+
+databases:
+  - name: paseo-aranjuez-db
+    plan: free
+    databaseName: paseo_aranjuez
+    user: paseo
+    # No ipAllowList: the web service reaches this over Render's private
+    # network, which does not go through the public IP filter. Add your own
+    # IP here only if you want to inspect the data with a local psql.
+    #
+    # Two free-tier facts worth knowing before the demo, not after it:
+    # this instance expires 30 days after creation (14-day grace period, then
+    # the data is deleted), and it sleeps when idle, so the first request
+    # after a pause can take a minute to answer.

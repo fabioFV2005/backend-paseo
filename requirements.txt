@@ -33,3 +33,9 @@ python-dotenv==1.0.0
 
 # Tests. `pythonpath` in pytest.ini needs pytest >= 7.
 pytest==7.4.3
+
+# WSGI server for the deployed app. `flask run` is fine locally but must not
+# be the production entrypoint: it warns about itself and handles one request
+# at a time. It installs cleanly on Windows but cannot serve there, so nothing
+# local ever imports it -- see the startCommand in render.yaml.
+gunicorn==23.0.0

@@ -6,6 +6,7 @@ Kept at the original URLs (/login, /auth/google/login, /auth/google/callback,
 
 import secrets
 
+import config
 from flask import (
     Blueprint,
     current_app,
@@ -213,6 +214,19 @@ def login():
 
     error_message = None
     if request.method == "POST":
+        if not config.DEMO_LOGIN:
+            # Anyone who can reach this URL can log in as any seeded account,
+            # admin@paseo.test included. Production therefore refuses the form
+            # and leaves Google as the only way in; see config.DEMO_LOGIN.
+            return (
+                render_template(
+                    "auth/login.html",
+                    error_message="El acceso con correo está deshabilitado. Entra con Google.",
+                    demo_users=[],
+                    next_url=request.args.get("next", ""),
+                ),
+                403,
+            )
         email = (request.form.get("email") or "").strip().lower()
         if not email or "@" not in email:
             error_message = "Por favor ingresa un correo electrónico válido."

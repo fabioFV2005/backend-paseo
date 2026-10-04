@@ -6,3 +6,8 @@ __pycache__/
 /ecommerce-design
 /.impeccable
 /.claude
+
+# Flask-SQLAlchemy's default SQLite location. Only reached when DATABASE_URL
+# points at a file; the deployed app uses PostgreSQL.
+instance/
+*.db

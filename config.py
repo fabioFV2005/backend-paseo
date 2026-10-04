@@ -118,6 +118,16 @@ CORS_ORIGINS = [
 ]
 
 
+# --- Demo login --------------------------------------------------------------
+
+# POST /login turns a submitted email straight into a session, with no
+# password and no Google. That is what the one-click demo buttons on the login
+# page use -- and it is also an unauthenticated admin login, since the seeded
+# admin is admin@paseo.test. Safe on localhost, not safe on a public URL, so it
+# follows the same rule as everything else here: on unless production says no.
+DEMO_LOGIN = _env_flag("DEMO_LOGIN", default=not IS_PRODUCTION)
+
+
 def google_configured() -> bool:
     """True when the Google OAuth credentials needed for sign-in are present."""
     return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)

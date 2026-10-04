@@ -17,7 +17,8 @@ which is what keeps a failed request from holding row locks.
 """
 
 import click
-from flask import Flask
+from flask import Flask, jsonify
+from sqlalchemy.exc import SQLAlchemyError
 
 import config
 from auth import load_current_user
@@ -72,6 +73,8 @@ def create_app(config_object=None) -> Flask:
 
     app.before_request(load_current_user)
 
+    _register_health(app)
+
     @app.after_request
     def _end_request(response):
         # Services commit exactly once, so by the time a handler returns there
@@ -86,6 +89,36 @@ def create_app(config_object=None) -> Flask:
 
     _register_cli(app)
     return app
+
+
+def _register_health(app: Flask) -> None:
+    @app.get("/health")
+    def health():
+        """Report whether the app can reach its database.
+
+        The deployed platform polls this, which is only useful if it actually
+        exercises the connection: a process that booted but cannot reach
+        Postgres serves every real page as a 500, and that is the failure worth
+        catching. `SELECT 1` is the cheapest query that still opens a socket and
+        completes a round trip.
+
+        The exception type is returned but not its message, which typically
+        carries the host and credentials of the database it failed to reach.
+        """
+        try:
+            db.session.execute(db.text("SELECT 1"))
+        except SQLAlchemyError as exc:
+            return (
+                jsonify(
+                    {
+                        "status": "degraded",
+                        "database": "unreachable",
+                        "error": type(exc).__name__,
+                    }
+                ),
+                503,
+            )
+        return jsonify({"status": "ok", "database": "ok"})
 
 
 def _register_cli(app: Flask) -> None:
