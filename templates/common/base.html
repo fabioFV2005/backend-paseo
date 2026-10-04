@@ -1,20 +1,30 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Paseo{% endblock %}</title>
+    <title>{% block title %}Paseo Aranjuez{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
   </head>
   <body>
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="{{ url_for('home') }}">Paseo</a>
+        {% if user and user.role == 'SELLER' %}
+          <!-- MERCHANT / SELLER TOPBAR -->
+          <a class="brand" href="{{ url_for('auth.seller_dashboard') }}" style="display: flex; align-items: center; gap: 8px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            <span>Paseo Aranjuez</span>
+            <span class="badge badge-info" style="font-size: 11px;">Portal Comercios</span>
+          </a>
 
-        {% block nav %}{% endblock %}
+          <nav aria-label="Navegación del comercio">
+            <a class="nav-link is-active" href="{{ url_for('auth.seller_dashboard') }}">Gestión de Mi Tienda</a>
+          </nav>
 
-        <div class="topbar-user">
-          {% if user %}
+          <div class="topbar-user">
             <span class="user-chip">
               {% if user.picture %}
                 <img class="avatar" src="{{ user.picture }}" alt="" referrerpolicy="no-referrer">
@@ -22,13 +32,90 @@
                 <span class="avatar" aria-hidden="true">{{ user.name[:1] | upper }}</span>
               {% endif %}
               <span class="user-name">{{ user.name }}</span>
-              <span class="badge {% if user.role.value == 'ADMIN' %}badge-dark{% elif user.role.value == 'SELLER' %}badge-info{% else %}badge-neutral{% endif %}">{{ user.role.value }}</span>
+              <span class="badge badge-info">Vendedor · {{ user.business.name if user.business else 'Mi Tienda' }}</span>
             </span>
-            <a class="btn-ghost" href="{{ url_for('logout') }}">Log out</a>
-          {% else %}
-            <a class="btn-ghost" href="{{ url_for('login') }}">Sign in</a>
-          {% endif %}
-        </div>
+            <a class="btn-ghost" href="{{ url_for('auth.logout') }}">Salir</a>
+          </div>
+
+        {% elif user and user.role == 'ADMIN' %}
+          <!-- MALL ADMIN TOPBAR -->
+          <a class="brand" href="{{ url_for('auth.admin_dashboard') }}" style="display: flex; align-items: center; gap: 8px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <span>Paseo Aranjuez</span>
+            <span class="badge badge-dark" style="font-size: 11px;">Administración Central</span>
+          </a>
+
+          <nav aria-label="Navegación administrativa">
+            <a class="nav-link is-active" href="{{ url_for('auth.admin_dashboard') }}">Panel General</a>
+          </nav>
+
+          <div class="topbar-user">
+            <span class="user-chip">
+              {% if user.picture %}
+                <img class="avatar" src="{{ user.picture }}" alt="" referrerpolicy="no-referrer">
+              {% else %}
+                <span class="avatar" aria-hidden="true">{{ user.name[:1] | upper }}</span>
+              {% endif %}
+              <span class="user-name">{{ user.name }}</span>
+              <span class="badge badge-dark">Staff Paseo</span>
+            </span>
+            <a class="btn-ghost" href="{{ url_for('auth.logout') }}">Salir</a>
+          </div>
+
+        {% else %}
+          <!-- CUSTOMER & VISITOR TOPBAR -->
+          <a class="brand" href="{{ url_for('auth.home') }}" style="display: flex; align-items: center; gap: 8px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path>
+              <path d="M3 6h18"></path>
+              <path d="M16 10a4 4 0 0 1-8 0"></path>
+            </svg>
+            <span>Paseo Aranjuez</span>
+          </a>
+
+          <nav aria-label="Navegación principal">
+            <a class="nav-link {% if request.endpoint == 'auth.home' %}is-active{% endif %}" href="{{ url_for('auth.home') }}">Catálogo</a>
+          </nav>
+
+          <div class="topbar-user">
+            <!-- Cart button strictly for customer -->
+            <button type="button" class="cart-nav-btn" onclick="openCartDrawer()" title="Ver carrito de compras">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="21" r="1"></circle>
+                <circle cx="19" cy="21" r="1"></circle>
+                <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path>
+              </svg>
+              <span>Carrito</span>
+              <span class="cart-count" id="nav-cart-count">0</span>
+            </button>
+
+            {% if user %}
+              <!-- Points Balance Pill strictly for Customer - Opens PaseoPoints Wallet -->
+              <button type="button" class="points-pill" onclick="openWalletModal()" title="Ver mi saldo y movimientos de puntos" style="cursor: pointer; border: 1px solid var(--border-hairline);">
+                <span style="font-weight: 700; font-size: 11px; color: #b45309;">PTS</span>
+                <span id="nav-points-val">{{ user_balance if user_balance is defined else user.points_balance }}</span>
+                <span style="opacity: 0.6; font-size: 10px;">({{ user.level }})</span>
+              </button>
+
+              <span class="user-chip">
+                {% if user.picture %}
+                  <img class="avatar" src="{{ user.picture }}" alt="" referrerpolicy="no-referrer">
+                {% else %}
+                  <span class="avatar" aria-hidden="true">{{ user.name[:1] | upper }}</span>
+                {% endif %}
+                <span class="user-name">{{ user.name }}</span>
+                <span class="badge badge-neutral">Cliente</span>
+              </span>
+              <a class="btn-ghost" href="{{ url_for('auth.logout') }}">Salir</a>
+            {% else %}
+              <a class="btn-ghost" href="{{ url_for('auth.login', next=request.path) }}" style="font-weight: 600;">Ingresar / Demo</a>
+            {% endif %}
+          </div>
+        {% endif %}
       </div>
     </header>
 
@@ -36,6 +123,398 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="foot">Paseo — your local marketplace</footer>
+    <!-- Global Cart Drawer Component -->
+    <div class="cart-drawer-overlay" id="cart-drawer-overlay" onclick="closeCartDrawer(event)">
+      <div class="cart-drawer-panel" onclick="event.stopPropagation()">
+        <div class="cart-drawer-head">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path>
+              <path d="M3 6h18"></path>
+              <path d="M16 10a4 4 0 0 1-8 0"></path>
+            </svg>
+            <h2 class="cart-drawer-title">Carrito PaseoYa</h2>
+          </div>
+          <button type="button" class="modal-close-btn" onclick="closeCartDrawer()" aria-label="Cerrar carrito">✕</button>
+        </div>
+
+        <div class="cart-drawer-body" id="cart-drawer-items">
+          <!-- Populated dynamically by JavaScript -->
+        </div>
+
+        <div class="cart-drawer-footer">
+          <div class="cart-summary-row">
+            <span>PaseoPoints que sumas:</span>
+            <strong style="color: #d97706;" id="cart-summary-points">+0 pts</strong>
+          </div>
+          <div class="cart-summary-row">
+            <span>Total a pagar al retirar:</span>
+            <span class="cart-summary-total" id="cart-summary-total">Bs 0.00</span>
+          </div>
+
+          <div style="margin-top: 4px;">
+            <input 
+              type="text" 
+              id="cart-coupon-input" 
+              placeholder="Código de cupón (opcional)" 
+              class="text-input" 
+              style="padding: 8px 12px; font-size: 13px; margin-bottom: 8px;"
+            >
+          </div>
+
+          {% if user %}
+            <button type="button" class="btn-checkout" id="btn-submit-order" onclick="submitOrder()">
+              <span>Confirmar Pedido de Retiro</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          {% else %}
+            <a href="{{ url_for('auth.login', next=request.path) }}" class="btn-checkout" style="text-decoration: none;">
+              <span>Inicia sesión para pedir</span>
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Success Modal -->
+    <div class="modal-overlay" id="order-success-modal" onclick="closeOrderSuccessModal(event)">
+      <div class="modal-box" onclick="event.stopPropagation()" style="text-align: center; padding: 32px 24px;">
+        <div style="width: 56px; height: 56px; background: #ecfdf5; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h2 style="margin: 0 0 8px; font-size: 22px; font-weight: 800; color: #0f172a;">¡Pedido Confirmado!</h2>
+        <p style="margin: 0 0 20px; font-size: 14px; color: #64748b;">Presenta tu código en el local para retirar tu compra:</p>
+        
+        <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 14px; padding: 20px; margin-bottom: 20px;">
+          <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: #64748b; margin-bottom: 6px;">Código de Retiro</div>
+          <div id="order-success-code" style="font-size: 32px; font-weight: 900; letter-spacing: 0.1em; color: #0f172a; font-family: monospace;">---</div>
+          <div id="order-success-shop" style="font-size: 13px; font-weight: 600; color: #059669; margin-top: 6px;">Local: ---</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; font-size: 14px; padding: 12px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; margin-bottom: 24px;">
+          <span style="color: #92400e; font-weight: 600;">Puntos PaseoPoints Ganados:</span>
+          <strong id="order-success-points" style="color: #b45309;">+0 pts</strong>
+        </div>
+
+        <button type="button" class="btn-primary" onclick="closeOrderSuccessModal()" style="width: 100%;">
+          Entendido, seguir explorando
+        </button>
+      </div>
+    </div>
+
+    <!-- PaseoPoints Customer Wallet Modal -->
+    {% if user and user.role == 'USER' %}
+    <div class="modal-overlay" id="wallet-modal" onclick="closeWalletModal(event)">
+      <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 520px; padding: 28px;">
+        <button type="button" class="modal-close-btn" onclick="closeWalletModal()" aria-label="Cerrar modal">✕</button>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+          <div>
+            <h2 style="margin: 0 0 4px; font-size: 20px; font-weight: 800; color: var(--text-primary);">Mi Billetera PaseoPoints</h2>
+            <span style="font-size: 13px; color: var(--text-muted);">Programa de fidelización de Paseo Aranjuez</span>
+          </div>
+          <span class="badge badge-emerald" style="font-size: 13px; font-weight: 700;">Nivel {{ user.level }}</span>
+        </div>
+
+        <!-- Balance Card -->
+        <div style="background: #fafafa; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">Saldo Disponible</span>
+            <div style="font-size: 28px; font-weight: 900; color: #9a5b00; line-height: 1.2;">
+              {{ user_balance if user_balance is defined else user.points_balance }} PTS
+            </div>
+            <span style="font-size: 12px; color: var(--text-muted);">Equivalente para canjear cupones de descuento</span>
+          </div>
+          <div style="text-align: right;">
+            <span class="store-points-rate">1 Bs = 1.0 pts</span>
+          </div>
+        </div>
+
+        <!-- How points are accumulated & Counter QR -->
+        <div style="background: #ffffff; border: 1px dashed var(--border-hairline); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 20px;">
+          <h3 style="margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--text-primary);">¿Cómo se acumulan tus puntos?</h3>
+          <ul style="margin: 0 0 12px; padding-left: 18px; font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+            <li><strong>Al retirar pedidos online:</strong> Al retirar tu pedido en cualquier local y validar tu PIN de 6 dígitos, se te acreditan tus puntos al instante.</li>
+            <li><strong>Al comprar en persona en el local:</strong> Presenta tu código QR personal al cajero antes de pagar para que registre tu compra.</li>
+          </ul>
+
+          <div style="background: #f4f4f5; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span style="font-size: 11px; color: var(--text-muted); display: block; font-weight: 600;">Tu Código QR Personal en Paseo Aranjuez:</span>
+              <strong style="font-family: monospace; font-size: 15px; color: var(--text-primary); letter-spacing: 0.05em;">{{ user.qr_code or user.id|string|truncate(12, True, '') }}</strong>
+            </div>
+            <button type="button" class="btn-ghost" style="padding: 4px 10px; font-size: 11px;" onclick="copyCouponCode('{{ user.qr_code }}')">Copiar</button>
+          </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div>
+          <h3 style="margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--text-primary);">Últimos Movimientos de Puntos</h3>
+          <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: 8px;">
+            {% if transactions %}
+              <table style="margin: 0; width: 100%; font-size: 12px;">
+                <tbody>
+                  {% for t in transactions %}
+                    <tr style="border-bottom: 1px solid var(--border-subtle);">
+                      <td style="padding: 8px 12px;">
+                        <strong style="color: var(--text-primary); display: block;">{{ t.note or t.type }}</strong>
+                        <span style="font-size: 11px; color: var(--text-muted);">{{ t.created_at.strftime('%d/%m/%Y %H:%M') if t.created_at else '' }}</span>
+                      </td>
+                      <td style="text-align: right; padding: 8px 12px; font-weight: 700; color: {% if t.points > 0 %}#18794e{% else %}#ef4444{% endif %};">
+                        {% if t.points > 0 %}+{{ t.points }}{% else %}{{ t.points }}{% endif %} pts
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% else %}
+              <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 12px;">
+                Aún no tienes movimientos de puntos registrados.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: right;">
+          <button type="button" class="btn-primary" onclick="closeWalletModal()" style="width: auto; padding: 8px 18px;">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Toast Notification -->
+    <div class="toast-box" id="toast-notification">
+      <span id="toast-message">Mensaje</span>
+    </div>
+
+    <!-- Client-side Cart & Modal Scripts -->
+    <script>
+      function openWalletModal() {
+        const m = document.getElementById('wallet-modal');
+        if (m) m.classList.add('is-open');
+      }
+
+      function closeWalletModal(e) {
+        if (!e || e.target === document.getElementById('wallet-modal') || e.target.classList.contains('modal-close-btn') || e.target.tagName === 'BUTTON') {
+          const m = document.getElementById('wallet-modal');
+          if (m) m.classList.remove('is-open');
+        }
+      }
+      // Reactive Cart State (LocalStorage based)
+      let cart = JSON.parse(localStorage.getItem('paseoya_cart') || '[]');
+
+      function saveCart() {
+        localStorage.setItem('paseoya_cart', JSON.stringify(cart));
+        updateCartBadge();
+        renderCartDrawer();
+      }
+
+      function updateCartBadge() {
+        const totalCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+        const badge = document.getElementById('nav-cart-count');
+        if (badge) {
+          badge.textContent = totalCount;
+        }
+      }
+
+      function addToCart(product, qty = 1) {
+        // Enforce 1 single business per order
+        if (cart.length > 0 && cart[0].business_id !== product.business_id) {
+          if (!confirm(`Tu carrito tiene productos de "${cart[0].business_name}". ¿Deseas vaciar el carrito actual para pedir de "${product.business_name}"?`)) {
+            return false;
+          }
+          cart = [];
+        }
+
+        const existing = cart.find(i => i.id === product.id);
+        if (existing) {
+          existing.quantity += qty;
+        } else {
+          cart.push({
+            id: product.id,
+            name: product.name,
+            price_bs: parseFloat(product.price_bs),
+            points_rate: parseFloat(product.points_rate || 1),
+            business_id: product.business_id,
+            business_name: product.business_name,
+            image_url: product.image_url,
+            quantity: qty
+          });
+        }
+        saveCart();
+        showToast(`✓ "${product.name}" añadido al carrito`);
+        return true;
+      }
+
+      function changeCartQty(id, delta) {
+        const item = cart.find(i => i.id === id);
+        if (item) {
+          item.quantity += delta;
+          if (item.quantity <= 0) {
+            cart = cart.filter(i => i.id !== id);
+          }
+          saveCart();
+        }
+      }
+
+      function removeFromCart(id) {
+        cart = cart.filter(i => i.id !== id);
+        saveCart();
+      }
+
+      function openCartDrawer() {
+        renderCartDrawer();
+        document.getElementById('cart-drawer-overlay').classList.add('is-open');
+      }
+
+      function closeCartDrawer(e) {
+        if (!e || e.target === document.getElementById('cart-drawer-overlay') || e.target.classList.contains('modal-close-btn')) {
+          document.getElementById('cart-drawer-overlay').classList.remove('is-open');
+        }
+      }
+
+      function renderCartDrawer() {
+        const container = document.getElementById('cart-drawer-items');
+        const submitBtn = document.getElementById('btn-submit-order');
+        if (!container) return;
+
+        if (cart.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 48px 16px; color: #64748b;">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px;">
+                <circle cx="8" cy="21" r="1"></circle>
+                <circle cx="19" cy="21" r="1"></circle>
+                <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path>
+              </svg>
+              <p style="margin: 0; font-size: 15px; font-weight: 500;">Tu carrito está vacío</p>
+              <p style="margin: 4px 0 0; font-size: 13px;">Explora el catálogo y añade tus productos favoritos.</p>
+            </div>
+          `;
+          document.getElementById('cart-summary-total').textContent = 'Bs 0.00';
+          document.getElementById('cart-summary-points').textContent = '+0 pts';
+          if (submitBtn) submitBtn.disabled = true;
+          return;
+        }
+
+        if (submitBtn) submitBtn.disabled = false;
+        let totalBs = 0;
+        let totalPts = 0;
+
+        container.innerHTML = cart.map(item => {
+          const itemTotal = item.price_bs * item.quantity;
+          totalBs += itemTotal;
+          totalPts += Math.floor(itemTotal * item.points_rate);
+          return `
+            <div class="cart-item-card">
+              <img src="${item.image_url || 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=120'}" class="cart-item-img" alt="${item.name}">
+              <div class="cart-item-info">
+                <div class="cart-item-top">
+                  <div>
+                    <h4 class="cart-item-name">${item.name}</h4>
+                    <p class="cart-item-shop">${item.business_name}</p>
+                  </div>
+                  <button type="button" class="cart-item-remove" onclick="removeFromCart('${item.id}')" title="Eliminar">✕</button>
+                </div>
+                <div class="cart-item-bottom">
+                  <span class="cart-item-price">Bs ${itemTotal.toFixed(2)}</span>
+                  <div class="qty-counter">
+                    <button type="button" class="qty-btn" onclick="changeCartQty('${item.id}', -1)">-</button>
+                    <span class="qty-val">${item.quantity}</span>
+                    <button type="button" class="qty-btn" onclick="changeCartQty('${item.id}', 1)">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        document.getElementById('cart-summary-total').textContent = `Bs ${totalBs.toFixed(2)}`;
+        document.getElementById('cart-summary-points').textContent = `+${totalPts} pts`;
+      }
+
+      async function submitOrder() {
+        if (cart.length === 0) return;
+        const submitBtn = document.getElementById('btn-submit-order');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span>Procesando pedido...</span>';
+        }
+
+        const couponInput = document.getElementById('cart-coupon-input');
+        const payload = {
+          items: cart.map(i => ({ product_id: i.id, quantity: i.quantity })),
+          coupon_code: couponInput ? couponInput.value.trim() : undefined,
+          payment_method: 'cash'
+        };
+
+        try {
+          const response = await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            alert(data.error || 'Error al procesar el pedido');
+            return;
+          }
+
+          // Order succeeded!
+          const order = data.order || data;
+          const shopName = order.business_name || (cart[0] ? cart[0].business_name : 'Paseo Aranjuez');
+          const pointsEarned = order.points_earned || 0;
+          const pickupCode = order.pickup_code || (order.id ? order.id.substring(0, 6).toUpperCase() : 'PS-OK');
+
+          cart = [];
+          saveCart();
+          closeCartDrawer();
+
+          document.getElementById('order-success-code').textContent = pickupCode;
+          document.getElementById('order-success-shop').textContent = `Local: ${shopName}`;
+          document.getElementById('order-success-points').textContent = `+${pointsEarned} pts`;
+          document.getElementById('order-success-modal').classList.add('is-open');
+
+        } catch (err) {
+          alert('Hubo un error de conexión al crear el pedido.');
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span>Confirmar Pedido de Retiro</span>';
+          }
+        }
+      }
+
+      function closeOrderSuccessModal(e) {
+        if (!e || e.target === document.getElementById('order-success-modal') || e.target.tagName === 'BUTTON') {
+          document.getElementById('order-success-modal').classList.remove('is-open');
+          window.location.reload();
+        }
+      }
+
+      function showToast(msg) {
+        const toast = document.getElementById('toast-notification');
+        const toastMsg = document.getElementById('toast-message');
+        if (toast && toastMsg) {
+          toastMsg.textContent = msg;
+          toast.classList.add('is-visible');
+          setTimeout(() => toast.classList.remove('is-visible'), 2800);
+        }
+      }
+
+      // Initialize badge on page load
+      document.addEventListener('DOMContentLoaded', () => {
+        updateCartBadge();
+      });
+    </script>
+
+    <footer class="foot">
+      <strong>Paseo Aranjuez</strong> — Marketplace de Comercios & Fidelización de Clientes
+    </footer>
   </body>
 </html>

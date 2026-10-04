@@ -60,6 +60,7 @@ def get_product(product_id) -> Product:
 def list_businesses(
     *,
     category: Optional[str] = None,
+    floor: Optional[str] = None,
     search: Optional[str] = None,
     only_active: bool = True,
     limit: int = 50,
@@ -69,6 +70,8 @@ def list_businesses(
     query = db.select(Business)
     if only_active:
         query = query.where(Business.active.is_(True))
+    if floor:
+        query = query.where(Business.floor == floor)
     if category:
         query = query.where(Business.category == category)
     if search:
@@ -106,6 +109,7 @@ def list_products(
     *,
     business_id=None,
     category: Optional[str] = None,
+    floor: Optional[str] = None,
     search: Optional[str] = None,
     include_inactive: bool = False,
     in_stock_only: bool = False,
@@ -118,18 +122,37 @@ def list_products(
     lets a shopper type "audifonos bluetooth" and compare shops.
     """
     query = db.select(Product)
+    has_business_join = False
     if business_id is not None:
         query = query.where(Product.business_id == business_id)
+    if floor:
+        if not has_business_join:
+            query = query.join(Business, Product.business_id == Business.id)
+            has_business_join = True
+        query = query.where(Business.floor == floor)
     if category:
-        query = query.where(Product.category == category)
+        if not has_business_join:
+            query = query.join(Business, Product.business_id == Business.id)
+            has_business_join = True
+        query = query.where(
+            db.or_(Product.category.ilike(category), Business.category.ilike(category))
+        )
     if not include_inactive:
         query = query.where(Product.active.is_(True))
     if in_stock_only:
         query = query.where(Product.stock > 0)
     if search:
         pattern = f"%{search.strip()}%"
+        if not has_business_join:
+            query = query.join(Business, Product.business_id == Business.id)
+            has_business_join = True
         query = query.where(
-            db.or_(Product.name.ilike(pattern), Product.description.ilike(pattern))
+            db.or_(
+                Product.name.ilike(pattern),
+                Product.description.ilike(pattern),
+                Product.category.ilike(pattern),
+                Business.name.ilike(pattern),
+            )
         )
     query = query.order_by(Product.name.asc())
     return list(db.session.execute(query.limit(limit).offset(offset)).scalars())

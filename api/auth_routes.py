@@ -30,14 +30,23 @@ from google_auth import (
     verify_google_token,
 )
 from models import (
+    Business,
     GoogleAccountConflict,
+    Order,
+    Product,
+    Transaction,
     User,
+    find_user_by_email,
     get_or_create_google_user,
     update_user_location,
 )
 from roles import UserRole
+from services.business_service import get_business_for_owner, get_business_sales_analytics
 from services.errors import ValidationError
-from services.points import get_balance, get_level_progress
+from services.catalog import list_businesses, list_categories, list_products
+from services.orders_service import list_business_orders
+from services.points import get_balance, get_level_progress, list_transactions
+from services.rewards_service import list_customer_coupons, list_rewards
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -71,30 +80,173 @@ def home():
                 "roles": {"customer": "/api/me", "seller": "/api/business/orders", "admin": "/api/admin/stats"},
             }
         )
-    return render_template("client/home.html", user=get_current_user())
+
+    user = get_current_user()
+    if user:
+        if user.role == UserRole.SELLER.value:
+            return redirect(url_for("auth.seller_dashboard"))
+        if user.role == UserRole.ADMIN.value and not request.args.get("preview"):
+            return redirect(url_for("auth.admin_dashboard"))
+
+    q = (request.args.get("q") or "").strip()
+    category = (request.args.get("category") or "").strip()
+    business_id = (request.args.get("business_id") or "").strip() or None
+    floor = (request.args.get("floor") or "").strip() or None
+
+    all_businesses = list_businesses(limit=50)
+    floors = sorted({b.floor for b in all_businesses if b.floor})
+    if floor:
+        businesses = [b for b in all_businesses if b.floor == floor]
+    else:
+        businesses = all_businesses
+
+    selected_business = next((b for b in all_businesses if str(b.id) == business_id), None) if business_id else None
+
+    products = list_products(
+        category=category or None,
+        floor=floor if not business_id else None,
+        search=q or None,
+        business_id=business_id,
+        limit=50,
+    )
+    categories = list_categories()
+    user_balance = get_balance(user) if user and user.role == UserRole.USER.value else 0
+    level_progress = get_level_progress(user_balance) if user and user.role == UserRole.USER.value else {}
+    transactions = list_transactions(user, limit=10) if user and user.role == UserRole.USER.value else []
+    rewards = list_rewards(limit=6)
+    user_coupons = list_customer_coupons(user, limit=10) if user and user.role == UserRole.USER.value else []
+
+    return render_template(
+        "client/home.html",
+        user=user,
+        user_balance=user_balance,
+        level_progress=level_progress,
+        transactions=transactions,
+        products=products,
+        categories=categories,
+        businesses=businesses,
+        all_businesses=all_businesses,
+        floors=floors,
+        selected_business=selected_business,
+        rewards=rewards,
+        user_coupons=user_coupons,
+        current_category=category,
+        current_floor=floor,
+        current_query=q,
+        current_business_id=business_id,
+    )
 
 
 @auth_bp.route("/seller/dashboard", endpoint="seller_dashboard")
 def seller_dashboard():
     user = get_current_user()
-    return render_template("seller/dashboard.html", user=user)
+    if not user:
+        return redirect(url_for("auth.login", next=request.path))
+    if user.role not in (UserRole.SELLER.value, UserRole.ADMIN.value):
+        return redirect(url_for("auth.home"))
+
+    business = get_business_for_owner(user)
+    if not business:
+        business = Business.query.first()
+
+    products = list_products(business_id=business.id, include_inactive=True, limit=100) if business else []
+    orders = list_business_orders(business.id, limit=50) if business else []
+    categories = list_categories()
+
+    analytics = get_business_sales_analytics(business, period="month") if business else {}
+
+    total_revenue = analytics.get("total_sales_bs", 0.0)
+    active_products_count = sum(1 for p in products if p.active)
+    pending_orders_count = analytics.get("pending_orders_count", 0)
+
+    return render_template(
+        "seller/dashboard.html",
+        user=user,
+        business=business,
+        products=products,
+        orders=orders,
+        categories=categories,
+        analytics=analytics,
+        total_revenue=total_revenue,
+        active_products_count=active_products_count,
+        pending_orders_count=pending_orders_count,
+    )
 
 
 @auth_bp.route("/admin/dashboard", endpoint="admin_dashboard")
 def admin_dashboard():
     user = get_current_user()
-    return render_template("admin/dashboard.html", user=user)
+    if not user:
+        return redirect(url_for("auth.login", next=request.path))
+    if user.role != UserRole.ADMIN.value:
+        return redirect(url_for("auth.home"))
+
+    businesses = Business.query.order_by(Business.created_at.asc()).all()
+    users = User.query.order_by(User.points_balance.desc(), User.created_at.asc()).all()
+    orders = Order.query.order_by(Order.created_at.desc()).limit(20).all()
+
+    stats = {
+        "total_users": User.query.count(),
+        "active_businesses": sum(1 for b in businesses if b.active),
+        "total_products": Product.query.count(),
+        "total_orders": Order.query.count(),
+        "points_circulating": sum(u.points_balance for u in users),
+    }
+
+    return render_template(
+        "admin/dashboard.html",
+        user=user,
+        businesses=businesses,
+        users=users,
+        orders=orders,
+        stats=stats,
+    )
 
 
-@auth_bp.route("/login")
+@auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
 def login():
-    """Render the login page. Already-authenticated users go straight on."""
+    """Render the login page or handle email/demo sign-in."""
     user = get_current_user()
-    if user is not None:
-        return redirect(landing_url_for(user))
+    next_url = request.args.get("next") or (landing_url_for(user) if user else url_for("auth.home"))
+    if user is not None and request.method == "GET":
+        return redirect(next_url)
+
+    error_message = None
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        if not email or "@" not in email:
+            error_message = "Por favor ingresa un correo electrónico válido."
+        else:
+            user = find_user_by_email(email)
+            if user is None:
+                name = email.split("@")[0].replace(".", " ").replace("-", " ").title()
+                user = get_or_create_google_user(
+                    google_sub=f"local-{email}",
+                    email=email,
+                    name=name,
+                )
+            token = create_token(user)
+            target = request.form.get("next") or request.args.get("next") or landing_url_for(user)
+            response = redirect(target)
+            set_session_cookie(response, token)
+            return response
+
+    error_code = request.args.get("error", "")
+    if error_code and not error_message:
+        error_message = LOGIN_ERRORS.get(error_code)
+
+    demo_users = [
+        {"email": "cliente@paseo.test", "name": "Cliente Demo", "role": "Cliente", "badge": "badge-neutral", "desc": "1,200 pts · Nivel Oro", "icon_text": "CL"},
+        {"email": "cafe@paseo.test", "name": "Dueño Cafe", "role": "Vendedor", "badge": "badge-info", "desc": "Café Aranjuez · Cafetería & Pastelería", "icon_text": "CF"},
+        {"email": "tech@paseo.test", "name": "Dueño Tech", "role": "Vendedor", "badge": "badge-info", "desc": "Tech Aranjuez · Tecnología & Audio", "icon_text": "TC"},
+        {"email": "admin@paseo.test", "name": "Admin Paseo", "role": "Administrador", "badge": "badge-dark", "desc": "Gestión general del centro comercial", "icon_text": "AD"},
+    ]
+
     return render_template(
         "auth/login.html",
-        error_message=LOGIN_ERRORS.get(request.args.get("error", "")),
+        error_message=error_message,
+        demo_users=demo_users,
+        next_url=request.args.get("next", ""),
     )
 
 

@@ -1,0 +1,14 @@
+{% extends "common/base.html" %}
+
+{% block title %}No encontrado — Paseo Aranjuez{% endblock %}
+
+{% block content %}
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:50vh;gap:16px;">
+  <h1 class="page-title">404 — Página no encontrada</h1>
+  <p class="section-note">El recurso que buscas no existe o fue movido.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+    <a href="{{ url_for('auth.home') }}" class="btn-ghost">Ir al inicio</a>
+    <a href="{{ url_for('auth.catalog_html') }}" class="btn-ghost">Ver catálogo</a>
+  </div>
+</div>
+{% endblock %}

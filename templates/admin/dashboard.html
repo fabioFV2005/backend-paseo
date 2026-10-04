@@ -1,72 +1,146 @@
 {% extends "common/base.html" %}
 
-{% block title %}Admin dashboard · Paseo{% endblock %}
-
-{% block nav %}
-<nav aria-label="Admin sections">
-  <a class="nav-link is-active" href="{{ url_for('admin_dashboard') }}" aria-current="page">Dashboard</a>
-  <a class="nav-link" href="{{ url_for('home') }}">Storefront</a>
-</nav>
-{% endblock %}
+{% block title %}Panel Administrador · Paseo Aranjuez{% endblock %}
 
 {% block content %}
-<header class="page-head">
-  <h1 class="page-title">Admin dashboard</h1>
-  <p class="page-sub">Marketplace health at a glance, {{ user.name.split(' ')[0] }}.</p>
+<!-- Admin Mall Header -->
+<header class="page-head" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
+  <div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+      <h1 class="page-title" style="margin: 0;">Administración General</h1>
+      <span class="badge badge-dark">Paseo Aranjuez Staff</span>
+    </div>
+    <p class="page-sub" style="margin: 0;">
+      Control de comercios afiliados, gestión de roles de usuarios, métricas de fidelización y catálogo global.
+    </p>
+  </div>
+
+  <div style="display: flex; gap: 10px;">
+    <a href="{{ url_for('auth.home') }}" class="btn-ghost" target="_blank" title="Ver marketplace público">
+      Ver tienda pública
+    </a>
+  </div>
 </header>
 
+<!-- Global Mall KPIs -->
 <div class="kpi-grid">
   <div class="kpi">
-    <p class="kpi-label">Total users</p>
-    <p class="kpi-value">2,431</p>
-    <p class="kpi-delta is-up">+84 this week</p>
+    <p class="kpi-label">Usuarios Registrados</p>
+    <p class="kpi-value">{{ stats.total_users }}</p>
+    <p class="kpi-delta is-up">Base de clientes</p>
   </div>
   <div class="kpi">
-    <p class="kpi-label">Active sellers</p>
-    <p class="kpi-value">186</p>
-    <p class="kpi-delta is-up">+7 this week</p>
+    <p class="kpi-label">Comercios Activos</p>
+    <p class="kpi-value">{{ stats.active_businesses }} <span style="font-size: 14px; font-weight: normal; color: #64748b;">/ {{ businesses|length }}</span></p>
+    <p class="kpi-delta is-up">Locales en el paseo</p>
   </div>
   <div class="kpi">
-    <p class="kpi-label">Products listed</p>
-    <p class="kpi-value">5,912</p>
-    <p class="kpi-delta is-up">+210 this week</p>
+    <p class="kpi-label">Productos Catalogados</p>
+    <p class="kpi-value">{{ stats.total_products }}</p>
+    <p class="kpi-delta is-up">En vitrina global</p>
   </div>
   <div class="kpi">
-    <p class="kpi-label">Revenue (30d)</p>
-    <p class="kpi-value">$48,320</p>
-    <p class="kpi-delta is-up">+9.1% vs prior 30d</p>
+    <p class="kpi-label">Pedidos Procesados</p>
+    <p class="kpi-value">{{ stats.total_orders }}</p>
+    <p class="kpi-delta is-up">Retiros PaseoYa</p>
   </div>
 </div>
 
-<section class="card" aria-labelledby="users-title">
-  <div class="card-head">
-    <h2 class="card-title" id="users-title">Latest sign-ups</h2>
-    <span class="card-note">Newest first</span>
+<!-- Tabs for Admin Navigation -->
+<div style="display: flex; gap: 12px; border-bottom: 1px solid var(--border-hairline); margin: 28px 0 20px;">
+  <button type="button" class="btn-ghost" id="tab-btn-businesses" onclick="switchAdminTab('businesses')" style="border-bottom: 2px solid #0f172a; border-radius: 0; font-weight: 700; background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px;">
+    Comercios del Paseo ({{ businesses|length }})
+  </button>
+  <button type="button" class="btn-ghost" id="tab-btn-users" onclick="switchAdminTab('users')" style="border-bottom: 2px solid transparent; border-radius: 0; color: #64748b; background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px;">
+    Usuarios y Roles ({{ users|length }})
+  </button>
+</div>
+
+<!-- SECTION 1: BUSINESSES MANAGEMENT -->
+<section id="admin-tab-businesses" class="card" aria-labelledby="businesses-title">
+  <div class="card-head" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h2 class="card-title" id="businesses-title">Comercios y Locales Comerciales</h2>
+      <span class="card-note">Aprueba nuevos locales, suspende actividades o ajusta tasas de fidelización</span>
+    </div>
   </div>
+
   <div class="table-scroll">
     <table>
       <thead>
         <tr>
-          <th scope="col">Name</th>
-          <th scope="col">Email</th>
-          <th scope="col">Role</th>
-          <th scope="col">Joined</th>
+          <th scope="col">Comercio</th>
+          <th scope="col">Categoría</th>
+          <th scope="col">Responsable / Dueño</th>
+          <th scope="col">Ubicación en el Mall</th>
+          <th scope="col" class="num">Tasa de Puntos</th>
+          <th scope="col">Estado</th>
+          <th scope="col" style="text-align: right;">Acciones</th>
         </tr>
       </thead>
       <tbody>
-        {% set signups = [
-          ("María Fernanda Ríos", "mafe.rios@example.com", "USER", "badge-neutral", "Today, 09:41"),
-          ("Café Andino", "hola@cafeandino.co", "SELLER", "badge-info", "Today, 08:17"),
-          ("Julián Castro", "julian.castro@example.com", "USER", "badge-neutral", "Yesterday, 18:02"),
-          ("Camila Herrera", "camila.h@example.com", "USER", "badge-neutral", "Yesterday, 12:44"),
-          ("Mochilas Andinas", "ventas@mochilasandinas.co", "SELLER", "badge-info", "Oct 1, 16:20")
-        ] %}
-        {% for name, email, role, badge, joined in signups %}
+        {% for b in businesses %}
+        <tr id="business-row-{{ b.id }}">
+          <td>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <img src="{{ b.logo_url or 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=100' }}" alt="{{ b.name }}" style="width: 38px; height: 38px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border-hairline);">
+              <div>
+                <strong style="color: var(--text-primary); font-size: 14px;">{{ b.name }}</strong>
+                {% if b.phone %}
+                  <span class="cell-muted" style="display: block; font-size: 11px;">Tel: {{ b.phone }}</span>
+                {% endif %}
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge badge-neutral">{{ b.category or 'General' }}</span>
+          </td>
+          <td>
+            <strong style="color: var(--text-primary);">{{ b.owner.name if b.owner else 'Sin asignar' }}</strong>
+            <span class="cell-muted" style="display: block; font-size: 11px;">{{ b.owner.email if b.owner else '' }}</span>
+          </td>
+          <td>
+            <span class="store-location-badge">
+              {{ b.floor or 'Piso' }} · {{ b.location or 'Sin ubicación' }}
+            </span>
+          </td>
+          <td class="num cell-strong" id="business-rate-{{ b.id }}">
+            1 Bs = {{ '%.2f'|format(b.points_per_bs) }} pts
+          </td>
+          <td>
+            <span class="badge {% if b.active %}badge-emerald{% else %}badge-neutral{% endif %}" id="business-status-{{ b.id }}">
+              {% if b.active %}Activo{% else %}Inactivo / Pausado{% endif %}
+            </span>
+          </td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 6px;">
+              <button 
+                type="button" 
+                id="btn-toggle-business-{{ b.id }}"
+                class="btn-ghost" 
+                style="padding: 4px 8px; font-size: 12px; color: {% if b.active %}#b45309{% else %}#059669{% endif %};" 
+                onclick="toggleBusinessActive('{{ b.id }}', {{ 'true' if b.active else 'false' }}, '{{ b.name }}')"
+                title="Activar o suspender local"
+              >
+                {% if b.active %}Suspender{% else %}Aprobar / Activar{% endif %}
+              </button>
+              <button 
+                type="button" 
+                class="btn-ghost" 
+                style="padding: 4px 8px; font-size: 12px;" 
+                onclick="openEditBusinessModal('{{ b.id }}', '{{ b.name }}', '{{ b.points_per_bs }}')"
+                title="Ajustar tasa de fidelización"
+              >
+                Ajustar Tasa
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
         <tr>
-          <td class="cell-strong">{{ name }}</td>
-          <td class="cell-muted">{{ email }}</td>
-          <td><span class="badge {{ badge }}">{{ role }}</span></td>
-          <td class="cell-muted">{{ joined }}</td>
+          <td colspan="7" style="text-align: center; padding: 40px; color: #64748b;">
+            No hay comercios registrados en el sistema.
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -74,39 +148,332 @@
   </div>
 </section>
 
-<section class="card" aria-labelledby="categories-title">
+<!-- SECTION 2: USERS & ROLES -->
+<section id="admin-tab-users" class="card" aria-labelledby="users-title" style="display: none;">
   <div class="card-head">
-    <h2 class="card-title" id="categories-title">Top categories</h2>
-    <span class="card-note">By sales, last 30 days</span>
+    <h2 class="card-title" id="users-title">Usuarios y Asignación de Roles</h2>
+    <span class="card-note">Promueve cuentas a Vendedor o Administrador y ajusta saldos</span>
   </div>
+
   <div class="table-scroll">
     <table>
       <thead>
         <tr>
-          <th scope="col">Category</th>
-          <th scope="col" class="num">Products</th>
-          <th scope="col" class="num">Orders</th>
-          <th scope="col" class="num">Revenue</th>
+          <th scope="col">Usuario</th>
+          <th scope="col">Correo Electrónico</th>
+          <th scope="col">Rol Actual</th>
+          <th scope="col">Nivel</th>
+          <th scope="col" class="num">Saldo Puntos</th>
+          <th scope="col" style="text-align: right;">Acciones</th>
         </tr>
       </thead>
       <tbody>
-        {% set categories = [
-          ("Coffee & food", "812", "1,204", "$14,860"),
-          ("Fashion", "1,430", "986", "$12,410"),
-          ("Tech", "968", "742", "$11,235"),
-          ("Home & garden", "1,105", "533", "$6,180"),
-          ("Sports", "694", "421", "$3,635")
-        ] %}
-        {% for name, products, orders, revenue in categories %}
-        <tr>
-          <td class="cell-strong">{{ name }}</td>
-          <td class="num">{{ products }}</td>
-          <td class="num">{{ orders }}</td>
-          <td class="num cell-strong">{{ revenue }}</td>
+        {% for u in users %}
+        <tr id="user-row-{{ u.id }}">
+          <td>
+            <strong style="color: #0f172a;">{{ u.name }}</strong>
+            {% if u.business %}
+              <span class="cell-muted" style="display: block; font-size: 11px;">Comercio: {{ u.business.name }}</span>
+            {% endif %}
+          </td>
+          <td class="cell-muted">{{ u.email }}</td>
+          <td>
+            <span id="user-role-badge-{{ u.id }}" class="badge {% if u.role == 'ADMIN' %}badge-dark{% elif u.role == 'SELLER' %}badge-info{% else %}badge-neutral{% endif %}">
+              {{ u.role }}
+            </span>
+          </td>
+          <td>
+            <span class="badge badge-neutral">{{ u.level }}</span>
+          </td>
+          <td class="num cell-strong" id="user-points-val-{{ u.id }}" style="font-size: 14px;">
+            {{ u.points_balance }} pts
+          </td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 6px;">
+              <button 
+                type="button" 
+                class="btn-ghost" 
+                style="padding: 4px 8px; font-size: 12px;" 
+                onclick="openRoleModal('{{ u.id }}', '{{ u.name }}', '{{ u.role }}')"
+              >
+                Cambiar Rol
+              </button>
+              <button 
+                type="button" 
+                class="btn-ghost" 
+                style="padding: 4px 8px; font-size: 12px;" 
+                onclick="openPointsModal('{{ u.id }}', '{{ u.name }}')"
+              >
+                Ajustar Puntos
+              </button>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </section>
+
+<!-- EDIT BUSINESS MODAL -->
+<div class="modal-overlay" id="business-modal" onclick="closeAdminModal('business-modal', event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 440px; padding: 24px;">
+    <button type="button" class="modal-close-btn" onclick="document.getElementById('business-modal').classList.remove('is-open')">✕</button>
+    <h3 id="modal-business-title" style="margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #0f172a;">Ajustar Tasa de Fidelización</h3>
+    <p style="margin: 0 0 16px; font-size: 13px; color: #64748b;">Define cuántos puntos otorga el local por cada boliviano gastado.</p>
+
+    <form onsubmit="handleBusinessRateSubmit(event)" style="display: flex; flex-direction: column; gap: 14px;">
+      <input type="hidden" id="edit-business-id" value="">
+      <div class="input-group">
+        <label for="edit-business-rate" class="input-label">Puntos por cada 1.00 Bs</label>
+        <input type="number" id="edit-business-rate" step="0.10" min="0.10" required class="text-input" placeholder="1.00">
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn-ghost" onclick="document.getElementById('business-modal').classList.remove('is-open')">Cancelar</button>
+        <button type="submit" class="btn-primary" style="width: auto; padding: 8px 16px;">Actualizar Tasa</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- CHANGE ROLE MODAL -->
+<div class="modal-overlay" id="role-modal" onclick="closeAdminModal('role-modal', event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 420px; padding: 24px;">
+    <button type="button" class="modal-close-btn" onclick="document.getElementById('role-modal').classList.remove('is-open')">✕</button>
+    <h3 id="modal-role-title" style="margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #0f172a;">Cambiar Rol de Usuario</h3>
+    <p style="margin: 0 0 16px; font-size: 13px; color: #64748b;">Asigna permisos de Cliente, Vendedor de Comercio o Administrador.</p>
+
+    <form onsubmit="handleRoleSubmit(event)" style="display: flex; flex-direction: column; gap: 14px;">
+      <input type="hidden" id="role-user-id" value="">
+      <div class="input-group">
+        <label for="select-role" class="input-label">Selecciona el nuevo rol</label>
+        <select id="select-role" class="text-input" style="padding: 10px;">
+          <option value="USER">USER (Cliente con acumulación y canje)</option>
+          <option value="SELLER">SELLER (Vendedor con gestión de tienda y pedidos)</option>
+          <option value="ADMIN">ADMIN (Administrador general del centro comercial)</option>
+        </select>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn-ghost" onclick="document.getElementById('role-modal').classList.remove('is-open')">Cancelar</button>
+        <button type="submit" class="btn-primary" style="width: auto; padding: 8px 16px;">Guardar Rol</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ADJUST POINTS MODAL -->
+<div class="modal-overlay" id="points-modal" onclick="closeAdminModal('points-modal', event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 440px; padding: 24px;">
+    <button type="button" class="modal-close-btn" onclick="document.getElementById('points-modal').classList.remove('is-open')">✕</button>
+    <h3 id="modal-points-title" style="margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #0f172a;">Ajustar Puntos Manualmente</h3>
+    <p style="margin: 0 0 16px; font-size: 13px; color: #64748b;">Crea una transacción de ajuste en el libro contable inmutable.</p>
+
+    <form onsubmit="handlePointsSubmit(event)" style="display: flex; flex-direction: column; gap: 14px;">
+      <input type="hidden" id="points-user-id" value="">
+      <div class="input-group">
+        <label for="input-points-amount" class="input-label">Cantidad de Puntos (positivo para sumar, negativo para restar)</label>
+        <input type="number" id="input-points-amount" required class="text-input" placeholder="Ej. 250">
+      </div>
+      <div class="input-group">
+        <label for="input-points-note" class="input-label">Motivo o Justificación del Ajuste *</label>
+        <input type="text" id="input-points-note" required class="text-input" placeholder="Ej. Bonificación por fidelidad / Reclamo atendido">
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn-ghost" onclick="document.getElementById('points-modal').classList.remove('is-open')">Cancelar</button>
+        <button type="submit" class="btn-primary" style="width: auto; padding: 8px 16px;">Aplicar Ajuste</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function switchAdminTab(tab) {
+    const bSec = document.getElementById('admin-tab-businesses');
+    const uSec = document.getElementById('admin-tab-users');
+    const bBtn = document.getElementById('tab-btn-businesses');
+    const uBtn = document.getElementById('tab-btn-users');
+
+    localStorage.setItem('admin_active_tab', tab);
+
+    if (tab === 'businesses') {
+      if (bSec) bSec.style.display = 'block';
+      if (uSec) uSec.style.display = 'none';
+      if (bBtn) {
+        bBtn.style.borderBottomColor = '#0f172a';
+        bBtn.style.fontWeight = '700';
+        bBtn.style.color = '#0f172a';
+      }
+      if (uBtn) {
+        uBtn.style.borderBottomColor = 'transparent';
+        uBtn.style.fontWeight = 'normal';
+        uBtn.style.color = '#64748b';
+      }
+    } else {
+      if (bSec) bSec.style.display = 'none';
+      if (uSec) uSec.style.display = 'block';
+      if (uBtn) {
+        uBtn.style.borderBottomColor = '#0f172a';
+        uBtn.style.fontWeight = '700';
+        uBtn.style.color = '#0f172a';
+      }
+      if (bBtn) {
+        bBtn.style.borderBottomColor = 'transparent';
+        bBtn.style.fontWeight = 'normal';
+        bBtn.style.color = '#64748b';
+      }
+    }
+  }
+
+  function closeAdminModal(modalId, e) {
+    if (!e || e.target === document.getElementById(modalId)) {
+      document.getElementById(modalId).classList.remove('is-open');
+    }
+  }
+
+  async function toggleBusinessActive(bid, currentActive, name) {
+    const actionWord = currentActive ? 'suspender' : 'activar';
+    if (!confirm(`¿Estás seguro de ${actionWord} el local "${name}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/businesses/${bid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !currentActive })
+      });
+      if (res.ok) {
+        const nextActive = !currentActive;
+        const statusBadge = document.getElementById(`business-status-${bid}`);
+        const toggleBtn = document.getElementById(`btn-toggle-business-${bid}`);
+        if (statusBadge) {
+          statusBadge.className = `badge ${nextActive ? 'badge-emerald' : 'badge-neutral'}`;
+          statusBadge.textContent = nextActive ? 'Activo' : 'Inactivo / Pausado';
+        }
+        if (toggleBtn) {
+          toggleBtn.textContent = nextActive ? 'Suspender' : 'Aprobar / Activar';
+          toggleBtn.style.color = nextActive ? '#b45309' : '#059669';
+          toggleBtn.setAttribute('onclick', `toggleBusinessActive('${bid}', ${nextActive}, '${name}')`);
+        }
+        showToast(nextActive ? 'Local activado correctamente' : 'Local suspendido');
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Error al cambiar estado del local');
+      }
+    } catch (err) {
+      alert('Error de conexión.');
+    }
+  }
+
+  function openEditBusinessModal(bid, name, rate) {
+    document.getElementById('edit-business-id').value = bid;
+    document.getElementById('modal-business-title').textContent = `Tasa de Puntos: ${name}`;
+    document.getElementById('edit-business-rate').value = parseFloat(rate).toFixed(2);
+    document.getElementById('business-modal').classList.add('is-open');
+  }
+
+  async function handleBusinessRateSubmit(e) {
+    e.preventDefault();
+    const bid = document.getElementById('edit-business-id').value;
+    const rate = parseFloat(document.getElementById('edit-business-rate').value);
+
+    try {
+      const res = await fetch(`/api/admin/businesses/${bid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points_per_bs: rate })
+      });
+      if (res.ok) {
+        const rateCell = document.getElementById(`business-rate-${bid}`);
+        if (rateCell) {
+          rateCell.textContent = `1 Bs = ${rate.toFixed(2)} pts`;
+        }
+        document.getElementById('business-modal').classList.remove('is-open');
+        showToast('Tasa de puntos actualizada correctamente');
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Error al actualizar tasa');
+      }
+    } catch (err) {
+      alert('Error de conexión.');
+    }
+  }
+
+  function openRoleModal(uid, name, currentRole) {
+    document.getElementById('role-user-id').value = uid;
+    document.getElementById('modal-role-title').textContent = `Rol de ${name}`;
+    document.getElementById('select-role').value = currentRole;
+    document.getElementById('role-modal').classList.add('is-open');
+  }
+
+  async function handleRoleSubmit(e) {
+    e.preventDefault();
+    const uid = document.getElementById('role-user-id').value;
+    const role = document.getElementById('select-role').value;
+
+    try {
+      const res = await fetch(`/api/admin/users/${uid}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: role })
+      });
+      if (res.ok) {
+        const roleBadge = document.getElementById(`user-role-badge-${uid}`);
+        if (roleBadge) {
+          roleBadge.className = `badge ${role === 'ADMIN' ? 'badge-dark' : (role === 'SELLER' ? 'badge-info' : 'badge-neutral')}`;
+          roleBadge.textContent = role;
+        }
+        document.getElementById('role-modal').classList.remove('is-open');
+        showToast(`Rol actualizado a ${role}`);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Error al actualizar rol');
+      }
+    } catch (err) {
+      alert('Error de conexión.');
+    }
+  }
+
+  function openPointsModal(uid, name) {
+    document.getElementById('points-user-id').value = uid;
+    document.getElementById('modal-points-title').textContent = `Ajustar Puntos a ${name}`;
+    document.getElementById('input-points-amount').value = '';
+    document.getElementById('input-points-note').value = '';
+    document.getElementById('points-modal').classList.add('is-open');
+  }
+
+  async function handlePointsSubmit(e) {
+    e.preventDefault();
+    const uid = document.getElementById('points-user-id').value;
+    const amount = parseInt(document.getElementById('input-points-amount').value);
+    const note = document.getElementById('input-points-note').value.trim();
+
+    try {
+      const res = await fetch(`/api/admin/users/${uid}/points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points: amount, note: note })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const pointsCell = document.getElementById(`user-points-val-${uid}`);
+        if (pointsCell) {
+          const currentPts = parseInt(pointsCell.textContent) || 0;
+          const newPts = (data && data.balance !== undefined) ? data.balance : (currentPts + amount);
+          pointsCell.textContent = `${newPts} pts`;
+        }
+        document.getElementById('points-modal').classList.remove('is-open');
+        showToast('Puntos ajustados correctamente');
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Error al ajustar puntos');
+      }
+    } catch (err) {
+      alert('Error de conexión.');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const savedTab = localStorage.getItem('admin_active_tab') || 'businesses';
+    switchAdminTab(savedTab);
+  });
+</script>
 {% endblock %}

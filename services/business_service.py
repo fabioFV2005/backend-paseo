@@ -148,6 +148,12 @@ def update_business(business: Business, data: dict) -> Business:
         business.description = (data.get("description") or "").strip() or None
     if "location" in data:
         business.location = (data.get("location") or "").strip() or None
+    if "floor" in data:
+        business.floor = (data.get("floor") or "").strip() or "Piso 1"
+    if "phone" in data:
+        business.phone = (data.get("phone") or "").strip() or None
+    if "logo_url" in data:
+        business.logo_url = (data.get("logo_url") or "").strip() or None
     if "points_per_bs" in data:
         rate = _decimal_field(data, "points_per_bs", required=True)
         if rate <= 0:
@@ -267,3 +273,97 @@ def credit_points_by_qr(business: Business, qr_code: str, amount_bs) -> Transact
         )
 
     return credit_purchase(customer, business, amount_bs)
+
+
+def get_business_sales_analytics(business: Business, period: str = "month") -> dict:
+    """Sales, estimated profit, and performance metrics across periods.
+
+    Period options: 'today', 'week', 'month', 'year', 'all'.
+    """
+    from datetime import datetime, timedelta, timezone
+    from enums import OrderStatus
+    from models import Order
+
+    now = datetime.now(timezone.utc)
+    cutoff = None
+    if period == "today":
+        cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        cutoff = now - timedelta(days=7)
+    elif period == "month":
+        cutoff = now - timedelta(days=30)
+    elif period == "year":
+        cutoff = now - timedelta(days=365)
+
+    query = db.select(Order).where(Order.business_id == business.id)
+    if cutoff:
+        query = query.where(Order.created_at >= cutoff)
+
+    orders = list(db.session.execute(query.order_by(Order.created_at.desc())).scalars())
+    delivered_orders = [o for o in orders if o.status == OrderStatus.DELIVERED.value]
+
+    total_sales_bs = sum(float(o.total_bs) for o in delivered_orders)
+    estimated_profit_bs = round(total_sales_bs * 0.75, 2)
+    orders_count = len(delivered_orders)
+    avg_ticket_bs = round(total_sales_bs / orders_count, 2) if orders_count > 0 else 0.0
+
+    product_stats = {}
+    items_sold = 0
+    for o in delivered_orders:
+        for it in o.items:
+            items_sold += it.quantity
+            pname = it.product_name
+            if pname not in product_stats:
+                product_stats[pname] = {"name": pname, "units": 0, "revenue_bs": 0.0}
+            product_stats[pname]["units"] += it.quantity
+            product_stats[pname]["revenue_bs"] = round(
+                product_stats[pname]["revenue_bs"] + float(it.subtotal_bs), 2
+            )
+
+    top_products = sorted(product_stats.values(), key=lambda x: x["revenue_bs"], reverse=True)[:5]
+
+    timeline_dict = {}
+    for o in delivered_orders:
+        date_key = o.created_at.strftime("%Y-%m-%d") if o.created_at else "Hoy"
+        label = o.created_at.strftime("%d %b") if o.created_at else "Hoy"
+        if date_key not in timeline_dict:
+            timeline_dict[date_key] = {
+                "date": date_key,
+                "label": label,
+                "sales_bs": 0.0,
+                "profit_bs": 0.0,
+                "orders": 0,
+            }
+        timeline_dict[date_key]["sales_bs"] = round(
+            timeline_dict[date_key]["sales_bs"] + float(o.total_bs), 2
+        )
+        timeline_dict[date_key]["profit_bs"] = round(
+            timeline_dict[date_key]["profit_bs"] + float(o.total_bs) * 0.75, 2
+        )
+        timeline_dict[date_key]["orders"] += 1
+
+    timeline = sorted(timeline_dict.values(), key=lambda x: x["date"])
+
+    return {
+        "period": period,
+        "total_sales_bs": round(total_sales_bs, 2),
+        "estimated_profit_bs": estimated_profit_bs,
+        "orders_count": orders_count,
+        "total_orders_received": len(orders),
+        "pending_orders_count": sum(
+            1
+            for o in orders
+            if o.status
+            in (
+                OrderStatus.RECEIVED.value,
+                OrderStatus.CONFIRMED.value,
+                OrderStatus.PREPARING.value,
+                OrderStatus.READY_FOR_PICKUP.value,
+            )
+        ),
+        "average_ticket_bs": avg_ticket_bs,
+        "items_sold": items_sold,
+        "top_products": top_products,
+        "timeline": timeline,
+    }
+

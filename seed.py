@@ -135,16 +135,18 @@ def run() -> None:
     tech.active = True
 
     if cafe_new:
-        for name, price, stock in (
-            ("Cafe Espresso", "4.50", 40),
-            ("Empanada de carne", "8.00", 25),
-            ("Batido de fresa", "12.00", 15),
+        for name, cat, desc, price, stock, img in (
+            ("Cafe Espresso", "Cafetería", "Café espresso de especialidad tostado localmente con notas de avellana y chocolate amargo.", "4.50", 40, "https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=600&auto=format&fit=crop&q=80"),
+            ("Empanada de carne", "Snacks & Comida", "Empanada artesanal horneada rellena de carne picada de primera, huevo y finas hierbas.", "8.00", 25, "https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?w=600&auto=format&fit=crop&q=80"),
+            ("Batido de fresa", "Bebidas", "Refrescante batido 100% natural preparado al instante con fresas frescas y hielo frappé.", "12.00", 15, "https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=600&auto=format&fit=crop&q=80"),
         ):
             db.session.add(
                 Product(
                     business_id=cafe.id,
                     name=name,
-                    description="Producto de demo",
+                    category=cat,
+                    description=desc,
+                    image_url=img,
                     price_bs=Decimal(price),
                     stock=stock,
                     active=True,
@@ -152,16 +154,18 @@ def run() -> None:
             )
 
     if tech_new:
-        for name, price, stock in (
-            ("Audifonos BT", "45.00", 12),
-            ("Cargador magnetico", "25.00", 20),
-            ("Funda de celular", "12.00", 30),
+        for name, cat, desc, price, stock, img in (
+            ("Audifonos BT", "Audio & Gadgets", "Audífonos inalámbricos Bluetooth 5.3 con cancelación activa de ruido y 24 horas de batería.", "45.00", 12, "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop&q=80"),
+            ("Cargador magnetico", "Tecnología", "Cargador inalámbrico magnético de 15W compatible con carga rápida y soporte de aluminio.", "25.00", 20, "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&auto=format&fit=crop&q=80"),
+            ("Funda de celular", "Accesorios", "Funda protectora de silicona líquida suave al tacto con borde elevado para protección de cámara.", "12.00", 30, "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=600&auto=format&fit=crop&q=80"),
         ):
             db.session.add(
                 Product(
                     business_id=tech.id,
                     name=name,
-                    description="Producto de demo",
+                    category=cat,
+                    description=desc,
+                    image_url=img,
                     price_bs=Decimal(price),
                     stock=stock,
                     active=True,

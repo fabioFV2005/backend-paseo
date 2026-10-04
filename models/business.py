@@ -42,9 +42,11 @@ class Business(TimestampMixin, db.Model):
     name = db.Column(db.String(160), nullable=False)
     category = db.Column(db.String(80), nullable=True, index=True)
     description = db.Column(db.Text, nullable=True)
-    # Free-text location inside the mall ("Plaza nivel 2, local 214"). The
-    # marketplace shows it so the customer knows where to walk to on pickup.
+    # Ubicación física y contacto
     location = db.Column(db.String(200), nullable=True)
+    floor = db.Column(db.String(50), nullable=True, default="Piso 1", server_default="Piso 1")
+    phone = db.Column(db.String(50), nullable=True)
+    logo_url = db.Column(db.String(500), nullable=True)
 
     points_per_bs = db.Column(
         db.Numeric(6, 2), nullable=False, default=1, server_default="1"
@@ -79,6 +81,9 @@ class Business(TimestampMixin, db.Model):
             "category": self.category,
             "description": self.description,
             "location": self.location,
+            "floor": self.floor or "Piso 1",
+            "phone": self.phone or "",
+            "logo_url": self.logo_url or "",
             "points_per_bs": float(self.points_per_bs),
             "active": self.active,
             "offers_delivery": self.offers_delivery,
@@ -90,6 +95,7 @@ class Business(TimestampMixin, db.Model):
                 "id": str(self.owner.id),
                 "name": self.owner.name,
                 "email": self.owner.email,
+                "phone": self.owner.phone,
             }
         return data
 

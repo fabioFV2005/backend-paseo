@@ -1,78 +1,1073 @@
 {% extends "common/base.html" %}
 
-{% block title %}Seller dashboard · Paseo{% endblock %}
-
-{% block nav %}
-<nav aria-label="Seller sections">
-  <a class="nav-link is-active" href="{{ url_for('seller_dashboard') }}" aria-current="page">Dashboard</a>
-  <a class="nav-link" href="{{ url_for('home') }}">Storefront</a>
-</nav>
-{% endblock %}
+{% block title %}Panel Vendedor · {{ business.name if business else 'Mi Tienda' }} · Paseo Aranjuez{% endblock %}
 
 {% block content %}
-<header class="page-head">
-  <h1 class="page-title">Seller dashboard</h1>
-  <p class="page-sub">Welcome back, {{ user.name.split(' ')[0] }}. Here is how your store is doing today.</p>
+<!-- Seller Store Header -->
+<header class="page-head" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
+  <div style="display: flex; align-items: center; gap: 16px;">
+    <img 
+      id="header-store-logo"
+      src="{{ business.logo_url or 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=120' }}" 
+      alt="{{ business.name if business else 'Tienda' }}" 
+      style="width: 54px; height: 54px; border-radius: 12px; object-fit: cover; border: 1px solid var(--border-hairline); background: #f4f4f5;"
+    >
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+        <h1 class="page-title" id="header-store-name" style="margin: 0; font-size: 22px;">{{ business.name if business else 'Mi Tienda' }}</h1>
+        <span class="badge {% if business and business.active %}badge-emerald{% else %}badge-neutral{% endif %}" id="header-store-badge">
+          {% if business and business.active %}Local Activo{% else %}Pendiente de Activación{% endif %}
+        </span>
+      </div>
+      <p class="page-sub" id="header-store-sub" style="margin: 0; font-size: 13px;">
+        {{ business.category if business else 'Comercio' }} &bull; Ubicación: <strong>{{ business.floor or 'Piso' }} · {{ business.location or 'Local Comercial' }}</strong> &bull; Contacto: {{ business.phone or 'Sin teléfono' }}
+      </p>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+    <button type="button" class="btn-ghost" onclick="switchSellerTab('profile')">
+      Editar Perfil
+    </button>
+    <button type="button" class="btn-primary" onclick="openCreateProductModal()" style="display: inline-flex; width: auto; padding: 8px 16px;">
+      + Nuevo producto
+    </button>
+  </div>
 </header>
 
-<div class="kpi-grid">
-  <div class="kpi">
-    <p class="kpi-label">Revenue today</p>
-    <p class="kpi-value">$1,248.50</p>
-    <p class="kpi-delta is-up">+12.4% vs yesterday</p>
-  </div>
-  <div class="kpi">
-    <p class="kpi-label">Orders</p>
-    <p class="kpi-value">32</p>
-    <p class="kpi-delta is-up">+5 new today</p>
-  </div>
-  <div class="kpi">
-    <p class="kpi-label">Active products</p>
-    <p class="kpi-value">18</p>
-    <p class="kpi-delta is-down">2 out of stock</p>
-  </div>
-  <div class="kpi">
-    <p class="kpi-label">Store rating</p>
-    <p class="kpi-value">4.8</p>
-    <p class="kpi-delta is-up">126 reviews</p>
-  </div>
+<!-- Tabs Navigation for Seller Console -->
+<div style="display: flex; gap: 12px; border-bottom: 1px solid var(--border-hairline); margin: 20px 0 24px; overflow-x: auto;">
+  <button type="button" class="btn-ghost" id="tab-btn-analytics" onclick="switchSellerTab('analytics')" style="border-bottom: 2px solid var(--text-primary); border-radius: 0; font-weight: 700; background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px; color: var(--text-primary);">
+    Dashboard de Ventas & Ganancias
+  </button>
+  <button type="button" class="btn-ghost" id="tab-btn-products" onclick="switchSellerTab('products')" style="border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px;">
+    Mi Catálogo (<span id="tab-products-count">{{ products|length }}</span>)
+  </button>
+  <button type="button" class="btn-ghost" id="tab-btn-orders" onclick="switchSellerTab('orders')" style="border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px;">
+    Pedidos de Retiro (<span id="tab-orders-count">{{ orders|length }}</span>)
+  </button>
+  <button type="button" class="btn-ghost" id="tab-btn-coupons" onclick="switchSellerTab('coupons')" style="border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px;">
+    Validar Cupón en Caja
+  </button>
+  <button type="button" class="btn-ghost" id="tab-btn-points" onclick="switchSellerTab('points')" style="border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px;">
+    Acreditar Puntos en Caja (QR)
+  </button>
+  <button type="button" class="btn-ghost" id="tab-btn-profile" onclick="switchSellerTab('profile')" style="border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); background: transparent; border-top: none; border-left: none; border-right: none; padding-bottom: 10px;">
+    Perfil de Mi Tienda
+  </button>
 </div>
 
-<section class="card" aria-labelledby="orders-title">
-  <div class="card-head">
-    <h2 class="card-title" id="orders-title">Recent orders</h2>
-    <span class="card-note">Last updated 5 min ago</span>
+<!-- TAB 1: SALES & PROFIT ANALYTICS DASHBOARD -->
+<section id="seller-tab-analytics" class="card" aria-labelledby="analytics-title">
+  <div class="analytics-header-row">
+    <div>
+      <h2 class="card-title" id="analytics-title" style="margin: 0 0 2px;">Reporte de Ventas & Ganancias</h2>
+      <span class="card-note">Análisis financiero de pedidos facturados y productos en {{ business.name }}</span>
+    </div>
+
+    <!-- Time Period Selector Pills -->
+    <div class="period-pills-bar" role="group" aria-label="Seleccionar período de análisis">
+      <button type="button" class="period-pill-btn" id="period-btn-today" onclick="loadAnalytics('today')">Hoy</button>
+      <button type="button" class="period-pill-btn" id="period-btn-week" onclick="loadAnalytics('week')">7 Días</button>
+      <button type="button" class="period-pill-btn is-active" id="period-btn-month" onclick="loadAnalytics('month')">Este Mes</button>
+      <button type="button" class="period-pill-btn" id="period-btn-year" onclick="loadAnalytics('year')">Este Año</button>
+      <button type="button" class="period-pill-btn" id="period-btn-all" onclick="loadAnalytics('all')">Histórico</button>
+    </div>
   </div>
+
+  <!-- Dynamic KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <p class="kpi-label">Ventas Brutas Facturadas</p>
+      <p class="kpi-value" id="kpi-sales-bs">Bs {{ '%.2f'|format(analytics.total_sales_bs or 0.0) }}</p>
+      <p class="kpi-delta is-up" id="kpi-sales-sub">Ingresos al retiro</p>
+    </div>
+
+    <div class="kpi">
+      <p class="kpi-label">Ganancia Neta Estimada</p>
+      <p class="kpi-value" style="color: #18794e;" id="kpi-profit-bs">Bs {{ '%.2f'|format(analytics.estimated_profit_bs or 0.0) }}</p>
+      <p class="kpi-delta is-up">Margen operativo ~75%</p>
+    </div>
+
+    <div class="kpi">
+      <p class="kpi-label">Pedidos Entregados</p>
+      <p class="kpi-value" id="kpi-orders-count">{{ analytics.orders_count or 0 }} <span style="font-size: 13px; font-weight: normal; color: var(--text-muted);">/ <span id="kpi-orders-total">{{ analytics.total_orders_received or 0 }} recibidos</span></span></p>
+      <p class="kpi-delta" id="kpi-pending-sub"><span id="kpi-pending-orders">{{ analytics.pending_orders_count or 0 }}</span> pendientes de entrega</p>
+    </div>
+
+    <div class="kpi">
+      <p class="kpi-label">Ticket Promedio</p>
+      <p class="kpi-value" id="kpi-avg-ticket">Bs {{ '%.2f'|format(analytics.average_ticket_bs or 0.0) }}</p>
+      <p class="kpi-delta is-up"><span id="kpi-items-sold">{{ analytics.items_sold or 0 }}</span> unidades vendidas</p>
+    </div>
+  </div>
+
+  <!-- Two Column Layout: Timeline Breakdown + Top Selling Products -->
+  <div class="analytics-grid-two">
+    <!-- Left: Timeline Breakdown Table -->
+    <div style="background: #ffffff; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 18px;">
+      <h3 style="margin: 0 0 14px; font-size: 14px; font-weight: 700; color: var(--text-primary);">Desglose Temporal de Ventas</h3>
+      <div id="analytics-timeline-wrapper">
+        {% if analytics.timeline %}
+          <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--border-hairline); color: var(--text-muted); text-align: left;">
+                <th style="padding: 6px 8px;">Fecha</th>
+                <th style="padding: 6px 8px; text-align: center;">Pedidos</th>
+                <th style="padding: 6px 8px; text-align: right;">Ventas (Bs)</th>
+                <th style="padding: 6px 8px; text-align: right;">Ganancia Est.</th>
+              </tr>
+            </thead>
+            <tbody id="timeline-table-body">
+              {% for row in analytics.timeline %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                  <td style="padding: 8px;">
+                    <strong>{{ row.label }}</strong>
+                  </td>
+                  <td style="padding: 8px; text-align: center;">
+                    <span class="badge badge-neutral">{{ row.orders }}</span>
+                  </td>
+                  <td style="padding: 8px; text-align: right; font-weight: 700;">
+                    Bs {{ '%.2f'|format(row.sales_bs) }}
+                    <div class="bar-progress-container">
+                      <div class="bar-progress-fill" style="width: {{ [100, (row.sales_bs / (analytics.total_sales_bs or 1.0) * 100)|int]|min }}%;"></div>
+                    </div>
+                  </td>
+                  <td style="padding: 8px; text-align: right; color: #18794e; font-weight: 600;">
+                    Bs {{ '%.2f'|format(row.profit_bs) }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div style="padding: 32px 16px; text-align: center; color: var(--text-muted); font-size: 13px;" id="timeline-empty-msg">
+            No se registran ventas entregadas en el período seleccionado.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Right: Top Products -->
+    <div style="background: #ffffff; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 18px;">
+      <h3 style="margin: 0 0 14px; font-size: 14px; font-weight: 700; color: var(--text-primary);">Top Productos Vendidos</h3>
+      <div id="analytics-top-products">
+        {% if analytics.top_products %}
+          <div style="display: flex; flex-direction: column; gap: 10px;" id="top-products-list">
+            {% for tp in analytics.top_products %}
+              <div style="padding: 10px; background: #fafafa; border-radius: 8px; border: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong style="font-size: 13px; color: var(--text-primary); display: block;">{{ tp.name }}</strong>
+                  <span style="font-size: 11px; color: var(--text-muted);">{{ tp.units }} unidades despachadas</span>
+                </div>
+                <div style="text-align: right;">
+                  <strong style="font-size: 13px; color: var(--text-primary);">Bs {{ '%.2f'|format(tp.revenue_bs) }}</strong>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="padding: 32px 16px; text-align: center; color: var(--text-muted); font-size: 13px;" id="top-products-empty-msg">
+            Sin ventas en el período.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TAB 2: PRODUCTS MANAGER (ISOLATED TO SELLER'S STORE) -->
+<section id="seller-tab-products" class="card" aria-labelledby="products-title" style="display: none;">
+  <div class="card-head" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h2 class="card-title" id="products-title">Catálogo e Inventario de {{ business.name }}</h2>
+      <span class="card-note">Solo gestionas los productos de tu propio local comercial</span>
+    </div>
+    <button type="button" class="btn-primary" onclick="openCreateProductModal()" style="display: inline-flex; width: auto; padding: 6px 14px; font-size: 13px;">
+      + Añadir producto
+    </button>
+  </div>
+
   <div class="table-scroll">
     <table>
       <thead>
         <tr>
-          <th scope="col">Order</th>
-          <th scope="col">Customer</th>
-          <th scope="col">Product</th>
-          <th scope="col" class="num">Total</th>
-          <th scope="col">Status</th>
+          <th scope="col" style="width: 56px;">Foto</th>
+          <th scope="col">Producto / Descripción</th>
+          <th scope="col">Categoría</th>
+          <th scope="col" class="num">Precio (Bs)</th>
+          <th scope="col" class="num">Stock</th>
+          <th scope="col">Estado</th>
+          <th scope="col" style="text-align: right;">Acciones</th>
         </tr>
       </thead>
-      <tbody>
-        {% set orders = [
-          ("#PS-1042", "María Fernanda R.", "Single-origin coffee — Huila ×2", "$25.00", "Paid", "badge-info"),
-          ("#PS-1041", "Carlos Gómez", "Urban backpack 20L", "$64.00", "Shipped", "badge-success"),
-          ("#PS-1040", "Lucía Torres", "Handwoven Wayuu tote", "$38.00", "Pending", "badge-warning"),
-          ("#PS-1039", "Andrés Peña", "Ceramic pour-over set", "$45.00", "Shipped", "badge-success"),
-          ("#PS-1038", "Valentina Ruiz", "Running sneakers — Terra", "$89.90", "Paid", "badge-info")
-        ] %}
-        {% for order_id, customer, product, total, status, badge in orders %}
-        <tr>
-          <td class="cell-strong">{{ order_id }}</td>
-          <td>{{ customer }}</td>
-          <td class="cell-muted">{{ product }}</td>
-          <td class="num cell-strong">{{ total }}</td>
-          <td><span class="badge {{ badge }}">{{ status }}</span></td>
+      <tbody id="products-tbody">
+        {% for p in products %}
+        <tr id="product-row-{{ p.id }}">
+          <td>
+            {% if p.image_url %}
+              <img id="prod-img-{{ p.id }}" src="{{ p.image_url }}" alt="{{ p.name }}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: #f1f5f9;">
+            {% else %}
+              <div id="prod-img-{{ p.id }}" style="width: 44px; height: 44px; border-radius: 8px; background: #f1f5f9; display: grid; place-items: center; color: var(--text-disabled); font-size: 11px;">
+                Sin foto
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            <strong id="prod-name-{{ p.id }}" style="color: var(--text-primary); display: block;">{{ p.name }}</strong>
+            <span id="prod-desc-{{ p.id }}" class="cell-muted" style="font-size: 12px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; max-width: 320px;">
+              {{ p.description or '' }}
+            </span>
+          </td>
+          <td>
+            <span class="badge badge-neutral" id="prod-cat-{{ p.id }}">{{ p.category or 'General' }}</span>
+          </td>
+          <td class="num cell-strong" style="font-size: 14px;" id="prod-price-{{ p.id }}">
+            Bs {{ '%.2f'|format(p.price_bs) }}
+          </td>
+          <td class="num">
+            <span id="prod-stock-{{ p.id }}" style="font-weight: 600; color: {% if p.stock < 5 %}#ef4444{% else %}inherit{% endif %};">
+              {{ p.stock }}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if p.active %}badge-emerald{% else %}badge-neutral{% endif %}" id="status-badge-{{ p.id }}">
+              {% if p.active %}Activo{% else %}Pausado{% endif %}
+            </span>
+          </td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 6px;">
+              <button 
+                type="button" 
+                class="btn-ghost" 
+                style="padding: 4px 8px; font-size: 12px;" 
+                onclick="openEditProductModal({{ p.to_dict() | tojson | forceescape }})"
+                title="Editar título, descripción, precio o foto"
+              >
+                Editar
+              </button>
+              <button 
+                type="button" 
+                class="btn-ghost" 
+                id="toggle-btn-{{ p.id }}"
+                style="padding: 4px 8px; font-size: 12px; color: {% if p.active %}#b45309{% else %}#059669{% endif %};" 
+                onclick="toggleProductActive('{{ p.id }}')"
+                title="Pausar o activar producto en el catálogo"
+              >
+                {% if p.active %}Pausar{% else %}Activar{% endif %}
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="empty-products-row">
+          <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+            Tu catálogo aún no tiene productos. Haz clic en <strong>+ Nuevo producto</strong> para publicar tu primer artículo.
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </section>
+
+<!-- TAB 3: ORDERS MANAGER -->
+<section id="seller-tab-orders" class="card" aria-labelledby="orders-title" style="display: none;">
+  <div class="card-head">
+    <h2 class="card-title" id="orders-title">Pedidos de Retiro en Local (PaseoYa)</h2>
+    <span class="card-note">Confirma preparación y valida el PIN de 6 dígitos del cliente al entregar</span>
+  </div>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Código</th>
+          <th scope="col">PIN Retiro</th>
+          <th scope="col">Cliente</th>
+          <th scope="col">Artículos</th>
+          <th scope="col" class="num">Total (Bs)</th>
+          <th scope="col">Estado</th>
+          <th scope="col" style="text-align: right;">Gestión</th>
+        </tr>
+      </thead>
+      <tbody id="orders-tbody">
+        {% for o in orders %}
+        <tr id="order-row-{{ o.id }}">
+          <td class="cell-strong" style="font-family: monospace;">{{ o.order_number or o.id|string|truncate(8, True, '') }}</td>
+          <td>
+            <span style="font-family: monospace; font-size: 15px; font-weight: 800; background: #f1f5f9; padding: 2px 8px; border-radius: 6px; letter-spacing: 0.05em;">
+              {{ o.pickup_code or '---' }}
+            </span>
+          </td>
+          <td>
+            <strong style="color: var(--text-primary);">{{ o.customer.name if o.customer else 'Cliente' }}</strong>
+            <span class="cell-muted" style="display: block; font-size: 11px;">{{ o.customer.email if o.customer else '' }}</span>
+          </td>
+          <td>
+            {% for item in o.items %}
+              <div style="font-size: 12px;">{{ item.quantity }}x {{ item.product_name }}</div>
+            {% endfor %}
+          </td>
+          <td class="num cell-strong" id="order-total-{{ o.id }}">Bs {{ '%.2f'|format(o.total_bs) }}</td>
+          <td>
+            <span class="badge {% if o.status == 'delivered' %}badge-emerald{% elif o.status in ('confirmed', 'preparing', 'ready_for_pickup') %}badge-info{% elif o.status == 'cancelled' %}badge-neutral{% else %}badge-neutral{% endif %}" id="order-badge-{{ o.id }}">
+              {% if o.status == 'received' %}Recibido
+              {% elif o.status == 'confirmed' %}Confirmado
+              {% elif o.status == 'preparing' %}En preparación
+              {% elif o.status == 'ready_for_pickup' %}Listo p/ retiro
+              {% elif o.status == 'delivered' %}Entregado
+              {% elif o.status == 'cancelled' %}Cancelado
+              {% else %}{{ o.status }}{% endif %}
+            </span>
+          </td>
+          <td style="text-align: right;" id="order-action-cell-{{ o.id }}">
+            {% if o.status == 'received' %}
+              <button type="button" class="btn-ghost" style="padding: 4px 8px; font-size: 12px;" onclick="updateOrderStatus('{{ o.id }}', 'confirmed')">
+                Confirmar
+              </button>
+            {% elif o.status == 'confirmed' %}
+              <button type="button" class="btn-ghost" style="padding: 4px 8px; font-size: 12px; background: #000000; color: white;" onclick="updateOrderStatus('{{ o.id }}', 'preparing')">
+                Preparar
+              </button>
+            {% elif o.status == 'preparing' %}
+              <button type="button" class="btn-ghost" style="padding: 4px 8px; font-size: 12px; background: #18794e; color: white;" onclick="updateOrderStatus('{{ o.id }}', 'ready_for_pickup')">
+                Listo p/ retiro
+              </button>
+            {% elif o.status in ('ready_for_pickup', 'customer_arrived') %}
+              <button type="button" class="btn-primary" style="display: inline-flex; width: auto; padding: 4px 10px; font-size: 12px; background: #059669;" onclick="promptPickup('{{ o.id }}', '{{ o.pickup_code }}')">
+                Validar PIN y Entregar
+              </button>
+            {% elif o.status == 'delivered' %}
+              <span style="font-size: 12px; color: #059669; font-weight: 600;">Entregado (+pts)</span>
+            {% else %}
+              <span style="font-size: 12px; color: var(--text-disabled);">{{ o.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+            No hay pedidos registrados para tu local todavía.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- TAB 4: COUNTER COUPON VALIDATION TOOL -->
+<section id="seller-tab-coupons" class="card" aria-labelledby="coupons-title" style="display: none;">
+  <div class="card-head">
+    <h2 class="card-title" id="coupons-title">Validador de Cupones en Mostrador</h2>
+    <span class="card-note">Valida cupones presentados por clientes en tu mostrador o caja</span>
+  </div>
+
+  <div style="max-width: 540px; padding: 12px 0;">
+    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+      Cuando un cliente presente un cupón de descuento en tu local, escribe el código aquí para verificar su validez y aplicar el descuento de forma inmediata sin recargar la página.
+    </p>
+
+    <form onsubmit="handleValidateCoupon(event)" style="display: flex; gap: 10px; margin-bottom: 20px;">
+      <input 
+        type="text" 
+        id="input-seller-coupon" 
+        placeholder="Ej. CAF-7821 o TEC-9102" 
+        class="text-input" 
+        style="text-transform: uppercase; font-family: monospace; font-size: 15px; font-weight: 700; letter-spacing: 0.05em;"
+        required
+      >
+      <button type="submit" class="btn-primary" id="btn-validate-coupon" style="width: auto; padding: 10px 18px; white-space: nowrap;">
+        Validar Cupón
+      </button>
+    </form>
+
+    <!-- Coupon Validation Result Card -->
+    <div id="coupon-validation-result" style="display: none; padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-hairline); background: #fafafa;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span class="badge badge-emerald" id="res-coupon-valid">Cupón Válido</span>
+        <strong style="font-family: monospace; font-size: 16px;" id="res-coupon-code">---</strong>
+      </div>
+      <p style="margin: 0 0 6px; font-size: 15px; font-weight: 700; color: var(--text-primary);" id="res-coupon-desc">Descuento</p>
+      <div style="font-size: 12px; color: var(--text-muted);" id="res-coupon-meta">Válido hasta: ---</div>
+    </div>
+  </div>
+</section>
+
+<!-- TAB 5: ACREDITAR PUNTOS EN CAJA (QR SCAN) -->
+<section id="seller-tab-points" class="card" aria-labelledby="points-title" style="display: none;">
+  <div class="card-head">
+    <h2 class="card-title" id="points-title">Acreditar Puntos por Compra Presencial en Mostrador</h2>
+    <span class="card-note">Cuando un cliente compre directamente en {{ business.name }}, ingresa su QR para sumarle PaseoPoints</span>
+  </div>
+
+  <div style="max-width: 540px; padding: 12px 0;">
+    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+      Tasa de fidelización de tu local: <strong>1 Bs = {{ '%.2f'|format(business.points_per_bs) }} PaseoPoints</strong>. Ingresa el código QR o ID que el cliente te muestre en su aplicación y el monto pagado en caja.
+    </p>
+
+    <form onsubmit="handleCreditPoints(event)" style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px;">
+      <div class="input-group">
+        <label for="input-qr-code" class="input-label">Código QR / Identificador del Cliente *</label>
+        <input 
+          type="text" 
+          id="input-qr-code" 
+          placeholder="Ej. 002ffd529f7c4b14" 
+          class="text-input" 
+          style="font-family: monospace; font-size: 14px;"
+          required
+        >
+      </div>
+
+      <div class="input-group">
+        <label for="input-qr-amount" class="input-label">Monto de la Compra en Bolivianos (Bs) *</label>
+        <input 
+          type="number" 
+          id="input-qr-amount" 
+          step="0.50" 
+          min="1" 
+          placeholder="Ej. 45.00" 
+          class="text-input" 
+          style="font-size: 15px; font-weight: 700;"
+          required
+        >
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn-primary" id="btn-credit-points" style="width: auto; padding: 10px 20px;">
+          Acreditar Puntos al Cliente
+        </button>
+      </div>
+    </form>
+
+    <div id="credit-points-result" style="display: none; padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-hairline); background: #fafafa;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span class="badge badge-emerald">Puntos Acreditados con Éxito</span>
+        <strong style="color: #9a5b00; font-size: 16px;" id="res-points-val">+0 PTS</strong>
+      </div>
+      <p style="margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text-primary);" id="res-points-cust">Cliente</p>
+      <div style="font-size: 12px; color: var(--text-muted);" id="res-points-meta">Monto registrado</div>
+    </div>
+  </div>
+</section>
+
+<!-- TAB 6: STORE PROFILE EDITOR -->
+<section id="seller-tab-profile" class="card" aria-labelledby="profile-title" style="display: none;">
+  <div class="card-head">
+    <h2 class="card-title" id="profile-title">Perfil de Mi Tienda</h2>
+    <span class="card-note">Edita los datos que los clientes ven en el directorio de Paseo Aranjuez</span>
+  </div>
+
+  <form id="store-profile-form" onsubmit="handleStoreProfileSubmit(event)" style="max-width: 680px; display: flex; flex-direction: column; gap: 16px; padding: 12px 0;">
+    <div class="input-group">
+      <label for="prof-name" class="input-label">Nombre del Comercio *</label>
+      <input type="text" id="prof-name" required class="text-input" value="{{ business.name if business else '' }}">
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+      <div class="input-group">
+        <label for="prof-category" class="input-label">Categoría *</label>
+        <input type="text" id="prof-category" required class="text-input" value="{{ business.category if business else '' }}" placeholder="Ej. Cafetería & Pastelería">
+      </div>
+
+      <div class="input-group">
+        <label for="prof-phone" class="input-label">Teléfono / WhatsApp de Contacto</label>
+        <input type="text" id="prof-phone" class="text-input" value="{{ business.phone if business else '' }}" placeholder="+591 71234567">
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+      <div class="input-group">
+        <label for="prof-floor" class="input-label">Piso en Paseo Aranjuez *</label>
+        <select id="prof-floor" class="text-input" style="padding: 10px;">
+          <option value="Piso 1" {% if business and business.floor == 'Piso 1' %}selected{% endif %}>Piso 1 (Galería Central)</option>
+          <option value="Piso 2" {% if business and business.floor == 'Piso 2' %}selected{% endif %}>Piso 2 (Plaza Gourmet)</option>
+          <option value="Piso 3" {% if business and business.floor == 'Piso 3' %}selected{% endif %}>Piso 3 (Cine & Entretenimiento)</option>
+          <option value="Planta Baja" {% if business and business.floor == 'Planta Baja' %}selected{% endif %}>Planta Baja (Acceso Principal)</option>
+        </select>
+      </div>
+
+      <div class="input-group">
+        <label for="prof-location" class="input-label">Local Comercial / Ubicación física *</label>
+        <input type="text" id="prof-location" required class="text-input" value="{{ business.location if business else '' }}" placeholder="Ej. Local 214 (Plaza Gourmet)">
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label for="prof-logo" class="input-label">URL del Logo o Foto de la Tienda</label>
+      <input type="url" id="prof-logo" class="text-input" value="{{ business.logo_url if business else '' }}" placeholder="https://images.unsplash.com/...">
+    </div>
+
+    <div class="input-group">
+      <label for="prof-desc" class="input-label">Descripción del Comercio</label>
+      <textarea id="prof-desc" rows="3" class="text-input" style="resize: vertical;" placeholder="Breve reseña sobre lo que ofrece tu tienda...">{{ business.description if business else '' }}</textarea>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+      <button type="submit" class="btn-primary" id="btn-save-profile" style="width: auto; padding: 10px 22px;">
+        Guardar Cambios del Perfil
+      </button>
+    </div>
+  </form>
+</section>
+
+<!-- PRODUCT MODAL (Create / Edit) -->
+<div class="modal-overlay" id="product-form-modal" onclick="closeProductFormModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 520px; padding: 28px;">
+    <button type="button" class="modal-close-btn" onclick="closeProductFormModal()">✕</button>
+    
+    <h2 id="modal-form-title" style="margin: 0 0 6px; font-size: 20px; font-weight: 800; color: var(--text-primary);">Añadir Producto</h2>
+    <p style="margin: 0 0 20px; font-size: 13px; color: var(--text-muted);">Completa la información para publicarlo en la vitrina de {{ business.name }}.</p>
+
+    <form id="product-editor-form" onsubmit="handleProductFormSubmit(event)" style="display: flex; flex-direction: column; gap: 14px;">
+      <input type="hidden" id="form-product-id" value="">
+
+      <div class="input-group">
+        <label for="form-name" class="input-label">Título / Nombre del Producto *</label>
+        <input type="text" id="form-name" required class="text-input" placeholder="Ej. Cable USB-C Carga Rápida">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="input-group">
+          <label for="form-category" class="input-label">Categoría *</label>
+          <input type="text" id="form-category" required class="text-input" placeholder="Ej. Tecnología & Audio">
+        </div>
+
+        <div class="input-group">
+          <label for="form-price" class="input-label">Precio en Bolivianos (Bs) *</label>
+          <input type="number" id="form-price" step="0.50" min="0.50" required class="text-input" placeholder="0.00">
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="input-group">
+          <label for="form-stock" class="input-label">Stock Disponible *</label>
+          <input type="number" id="form-stock" min="0" required class="text-input" placeholder="10">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Disponibilidad</label>
+          <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; font-size: 13px;">
+            <input type="checkbox" id="form-active" checked style="width: 16px; height: 16px;">
+            <span>Activo para la venta</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label for="form-img" class="input-label">URL de la Foto del Producto</label>
+        <input type="url" id="form-img" class="text-input" placeholder="https://images.unsplash.com/photo-...">
+      </div>
+
+      <div class="input-group">
+        <label for="form-desc" class="input-label">Descripción</label>
+        <textarea id="form-desc" rows="3" class="text-input" style="resize: vertical;" placeholder="Características, especificaciones, detalles..."></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px;">
+        <button type="button" class="btn-ghost" onclick="closeProductFormModal()">Cancelar</button>
+        <button type="submit" class="btn-primary" id="btn-save-product" style="width: auto; padding: 10px 20px;">
+          Guardar Producto
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Tab Management with LocalStorage persistence (NO RELOAD)
+  function switchSellerTab(tab) {
+    localStorage.setItem('seller_active_tab', tab);
+    const tabs = ['analytics', 'products', 'orders', 'coupons', 'points', 'profile'];
+    tabs.forEach(t => {
+      const sec = document.getElementById(`seller-tab-${t}`);
+      const btn = document.getElementById(`tab-btn-${t}`);
+      if (sec && btn) {
+        if (t === tab) {
+          sec.style.display = 'block';
+          btn.style.borderBottomColor = 'var(--text-primary)';
+          btn.style.fontWeight = '700';
+          btn.style.color = 'var(--text-primary)';
+        } else {
+          sec.style.display = 'none';
+          btn.style.borderBottomColor = 'transparent';
+          btn.style.fontWeight = 'normal';
+          btn.style.color = 'var(--text-muted)';
+        }
+      }
+    });
+  }
+
+  // Load analytics asynchronously (NO RELOAD)
+  async function loadAnalytics(period) {
+    ['today', 'week', 'month', 'year', 'all'].forEach(p => {
+      const b = document.getElementById(`period-btn-${p}`);
+      if (b) {
+        if (p === period) b.classList.add('is-active');
+        else b.classList.remove('is-active');
+      }
+    });
+
+    try {
+      const res = await fetch(`/api/business/analytics?period=${period}`);
+      const data = await res.json();
+      if (!res.ok) return;
+
+      document.getElementById('kpi-sales-bs').textContent = `Bs ${parseFloat(data.total_sales_bs).toFixed(2)}`;
+      document.getElementById('kpi-profit-bs').textContent = `Bs ${parseFloat(data.estimated_profit_bs).toFixed(2)}`;
+      document.getElementById('kpi-orders-count').innerHTML = `${data.orders_count} <span style="font-size: 13px; font-weight: normal; color: var(--text-muted);">/ <span id="kpi-orders-total">${data.total_orders_received} recibidos</span></span>`;
+      document.getElementById('kpi-pending-orders').textContent = data.pending_orders_count;
+      document.getElementById('kpi-avg-ticket').textContent = `Bs ${parseFloat(data.average_ticket_bs).toFixed(2)}`;
+      document.getElementById('kpi-items-sold').textContent = data.items_sold;
+
+      // Update timeline table
+      const timelineWrapper = document.getElementById('analytics-timeline-wrapper');
+      if (data.timeline && data.timeline.length > 0) {
+        const rowsHtml = data.timeline.map(row => {
+          const pct = Math.min(100, Math.round((row.sales_bs / (data.total_sales_bs || 1)) * 100));
+          return `
+            <tr style="border-bottom: 1px solid var(--border-subtle);">
+              <td style="padding: 8px;"><strong>${row.label}</strong></td>
+              <td style="padding: 8px; text-align: center;"><span class="badge badge-neutral">${row.orders}</span></td>
+              <td style="padding: 8px; text-align: right; font-weight: 700;">
+                Bs ${parseFloat(row.sales_bs).toFixed(2)}
+                <div class="bar-progress-container">
+                  <div class="bar-progress-fill" style="width: ${pct}%;"></div>
+                </div>
+              </td>
+              <td style="padding: 8px; text-align: right; color: #18794e; font-weight: 600;">
+                Bs ${parseFloat(row.profit_bs).toFixed(2)}
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        timelineWrapper.innerHTML = `
+          <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--border-hairline); color: var(--text-muted); text-align: left;">
+                <th style="padding: 6px 8px;">Fecha</th>
+                <th style="padding: 6px 8px; text-align: center;">Pedidos</th>
+                <th style="padding: 6px 8px; text-align: right;">Ventas (Bs)</th>
+                <th style="padding: 6px 8px; text-align: right;">Ganancia Est.</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        `;
+      } else {
+        timelineWrapper.innerHTML = `
+          <div style="padding: 32px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            No se registran ventas entregadas en el período seleccionado.
+          </div>
+        `;
+      }
+
+      // Update top products
+      const topWrapper = document.getElementById('analytics-top-products');
+      if (data.top_products && data.top_products.length > 0) {
+        const itemsHtml = data.top_products.map(tp => `
+          <div style="padding: 10px; background: #fafafa; border-radius: 8px; border: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong style="font-size: 13px; color: var(--text-primary); display: block;">${tp.name}</strong>
+              <span style="font-size: 11px; color: var(--text-muted);">${tp.units} unidades despachadas</span>
+            </div>
+            <div style="text-align: right;">
+              <strong style="font-size: 13px; color: var(--text-primary);">Bs ${parseFloat(tp.revenue_bs).toFixed(2)}</strong>
+            </div>
+          </div>
+        `).join('');
+        topWrapper.innerHTML = `<div style="display: flex; flex-direction: column; gap: 10px;">${itemsHtml}</div>`;
+      } else {
+        topWrapper.innerHTML = `
+          <div style="padding: 32px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            Sin ventas en el período.
+          </div>
+        `;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // Product Modals
+  function openCreateProductModal() {
+    document.getElementById('modal-form-title').textContent = 'Añadir Nuevo Producto';
+    document.getElementById('form-product-id').value = '';
+    document.getElementById('form-name').value = '';
+    document.getElementById('form-category').value = '{{ business.category if business else "General" }}';
+    document.getElementById('form-price').value = '';
+    document.getElementById('form-stock').value = '20';
+    document.getElementById('form-img').value = '';
+    document.getElementById('form-desc').value = '';
+    document.getElementById('form-active').checked = true;
+
+    document.getElementById('product-form-modal').classList.add('is-open');
+  }
+
+  function openEditProductModal(prod) {
+    document.getElementById('modal-form-title').textContent = 'Editar Producto';
+    document.getElementById('form-product-id').value = prod.id;
+    document.getElementById('form-name').value = prod.name || '';
+    document.getElementById('form-category').value = prod.category || '';
+    document.getElementById('form-price').value = prod.price_bs || '';
+    document.getElementById('form-stock').value = prod.stock || 0;
+    document.getElementById('form-img').value = prod.image_url || '';
+    document.getElementById('form-desc').value = prod.description || '';
+    document.getElementById('form-active').checked = prod.active !== false;
+
+    document.getElementById('product-form-modal').classList.add('is-open');
+  }
+
+  function closeProductFormModal(e) {
+    if (!e || e.target === document.getElementById('product-form-modal') || e.target.classList.contains('modal-close-btn') || e.target.tagName === 'BUTTON') {
+      document.getElementById('product-form-modal').classList.remove('is-open');
+    }
+  }
+
+  // Reactive Product Form Submit (NO RELOAD)
+  async function handleProductFormSubmit(e) {
+    e.preventDefault();
+    const saveBtn = document.getElementById('btn-save-product');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Guardando...';
+
+    const pid = document.getElementById('form-product-id').value.trim();
+    const payload = {
+      name: document.getElementById('form-name').value.trim(),
+      category: document.getElementById('form-category').value.trim(),
+      price_bs: parseFloat(document.getElementById('form-price').value),
+      stock: parseInt(document.getElementById('form-stock').value),
+      image_url: document.getElementById('form-img').value.trim() || null,
+      description: document.getElementById('form-desc').value.trim() || null,
+      active: document.getElementById('form-active').checked
+    };
+
+    try {
+      const url = pid ? `/api/business/products/${pid}` : '/api/business/products';
+      const method = pid ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || 'Error al guardar producto');
+        return;
+      }
+
+      const p = data.product;
+      const tbody = document.getElementById('products-tbody');
+      const emptyRow = document.getElementById('empty-products-row');
+      if (emptyRow) emptyRow.remove();
+
+      if (pid) {
+        // Update row in-place
+        document.getElementById(`prod-name-${p.id}`).textContent = p.name;
+        document.getElementById(`prod-desc-${p.id}`).textContent = p.description || '';
+        document.getElementById(`prod-cat-${p.id}`).textContent = p.category || 'General';
+        document.getElementById(`prod-price-${p.id}`).textContent = `Bs ${parseFloat(p.price_bs).toFixed(2)}`;
+        const stockEl = document.getElementById(`prod-stock-${p.id}`);
+        stockEl.textContent = p.stock;
+        stockEl.style.color = p.stock < 5 ? '#ef4444' : 'inherit';
+
+        const imgEl = document.getElementById(`prod-img-${p.id}`);
+        if (p.image_url) {
+          imgEl.outerHTML = `<img id="prod-img-${p.id}" src="${p.image_url}" alt="${p.name}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: #f1f5f9;">`;
+        }
+
+        const badgeEl = document.getElementById(`status-badge-${p.id}`);
+        badgeEl.textContent = p.active ? 'Activo' : 'Pausado';
+        badgeEl.className = `badge ${p.active ? 'badge-emerald' : 'badge-neutral'}`;
+
+        showToast('✓ Producto actualizado correctamente');
+      } else {
+        // Prepend new row in-place
+        const newRow = document.createElement('tr');
+        newRow.id = `product-row-${p.id}`;
+        newRow.innerHTML = `
+          <td>
+            ${p.image_url ? `<img id="prod-img-${p.id}" src="${p.image_url}" alt="${p.name}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: #f1f5f9;">` : `<div id="prod-img-${p.id}" style="width: 44px; height: 44px; border-radius: 8px; background: #f1f5f9; display: grid; place-items: center; color: var(--text-disabled); font-size: 11px;">Sin foto</div>`}
+          </td>
+          <td>
+            <strong id="prod-name-${p.id}" style="color: var(--text-primary); display: block;">${p.name}</strong>
+            <span id="prod-desc-${p.id}" class="cell-muted" style="font-size: 12px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; max-width: 320px;">
+              ${p.description || ''}
+            </span>
+          </td>
+          <td><span class="badge badge-neutral" id="prod-cat-${p.id}">${p.category || 'General'}</span></td>
+          <td class="num cell-strong" style="font-size: 14px;" id="prod-price-${p.id}">Bs ${parseFloat(p.price_bs).toFixed(2)}</td>
+          <td class="num"><span id="prod-stock-${p.id}" style="font-weight: 600; color: ${p.stock < 5 ? '#ef4444' : 'inherit'};">${p.stock}</span></td>
+          <td><span class="badge ${p.active ? 'badge-emerald' : 'badge-neutral'}" id="status-badge-${p.id}">${p.active ? 'Activo' : 'Pausado'}</span></td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 6px;">
+              <button type="button" class="btn-ghost" style="padding: 4px 8px; font-size: 12px;" onclick='openEditProductModal(${JSON.stringify(p)})'>Editar</button>
+              <button type="button" class="btn-ghost" id="toggle-btn-${p.id}" style="padding: 4px 8px; font-size: 12px; color: ${p.active ? '#b45309' : '#059669'};" onclick="toggleProductActive('${p.id}')">${p.active ? 'Pausar' : 'Activar'}</button>
+            </div>
+          </td>
+        `;
+        tbody.prepend(newRow);
+
+        const countEl = document.getElementById('tab-products-count');
+        if (countEl) countEl.textContent = parseInt(countEl.textContent || '0') + 1;
+        showToast('✓ Producto creado exitosamente');
+      }
+
+      closeProductFormModal();
+    } catch (err) {
+      alert('Error de conexión al guardar producto.');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Guardar Producto';
+    }
+  }
+
+  // Reactive Toggle Active (NO RELOAD)
+  async function toggleProductActive(pid) {
+    const badge = document.getElementById(`status-badge-${pid}`);
+    const btn = document.getElementById(`toggle-btn-${pid}`);
+    const isCurrentlyActive = badge && badge.textContent.trim() === 'Activo';
+
+    try {
+      const res = await fetch(`/api/business/products/${pid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !isCurrentlyActive })
+      });
+      if (res.ok) {
+        if (!isCurrentlyActive) {
+          badge.textContent = 'Activo';
+          badge.className = 'badge badge-emerald';
+          btn.textContent = 'Pausar';
+          btn.style.color = '#b45309';
+          showToast('✓ Producto activado');
+        } else {
+          badge.textContent = 'Pausado';
+          badge.className = 'badge badge-neutral';
+          btn.textContent = 'Activar';
+          btn.style.color = '#059669';
+          showToast('✓ Producto pausado');
+        }
+      } else {
+        alert('No se pudo cambiar el estado del producto.');
+      }
+    } catch (err) {
+      alert('Error de conexión.');
+    }
+  }
+
+  // Reactive Order Status Progression (NO RELOAD)
+  async function updateOrderStatus(orderId, nextStatus) {
+    try {
+      const res = await fetch(`/api/business/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Error al actualizar pedido');
+        return;
+      }
+
+      const badge = document.getElementById(`order-badge-${orderId}`);
+      const actionCell = document.getElementById(`order-action-cell-${orderId}`);
+
+      if (nextStatus === 'confirmed') {
+        badge.textContent = 'Confirmado';
+        badge.className = 'badge badge-info';
+        actionCell.innerHTML = `
+          <button type="button" class="btn-ghost" style="padding: 4px 8px; font-size: 12px; background: #000000; color: white;" onclick="updateOrderStatus('${orderId}', 'preparing')">
+            Preparar
+          </button>
+        `;
+        showToast('✓ Pedido confirmado para preparación');
+      } else if (nextStatus === 'preparing') {
+        badge.textContent = 'En preparación';
+        badge.className = 'badge badge-info';
+        actionCell.innerHTML = `
+          <button type="button" class="btn-ghost" style="padding: 4px 8px; font-size: 12px; background: #18794e; color: white;" onclick="updateOrderStatus('${orderId}', 'ready_for_pickup')">
+            Listo p/ retiro
+          </button>
+        `;
+        showToast('✓ Pedido en preparación');
+      } else if (nextStatus === 'ready_for_pickup') {
+        badge.textContent = 'Listo p/ retiro';
+        badge.className = 'badge badge-info';
+        actionCell.innerHTML = `
+          <button type="button" class="btn-primary" style="display: inline-flex; width: auto; padding: 4px 10px; font-size: 12px; background: #059669;" onclick="promptPickup('${orderId}')">
+            Validar PIN y Entregar
+          </button>
+        `;
+        showToast('✓ Pedido listo para que el cliente lo retire');
+      }
+    } catch (err) {
+      alert('Error de conexión.');
+    }
+  }
+
+  // Reactive PIN Delivery Confirmation (NO RELOAD)
+  async function promptPickup(orderId, expectedPin = '') {
+    const inputPin = prompt(`Ingresa el Código de Retiro (PIN de 6 dígitos) presentado por el cliente:`, expectedPin);
+    if (!inputPin) return;
+
+    try {
+      const res = await fetch(`/api/business/orders/${orderId}/pickup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: inputPin.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Código de retiro inválido.');
+        return;
+      }
+
+      const badge = document.getElementById(`order-badge-${orderId}`);
+      const actionCell = document.getElementById(`order-action-cell-${orderId}`);
+
+      badge.textContent = 'Entregado';
+      badge.className = 'badge badge-emerald';
+      actionCell.innerHTML = `<span style="font-size: 12px; color: #059669; font-weight: 600;">Entregado (+pts)</span>`;
+
+      showToast(`✓ ¡Entrega confirmada! Se acreditaron ${data.points_credited || 'los'} pts al cliente`);
+      loadAnalytics(localStorage.getItem('seller_analytics_period') || 'month');
+    } catch (err) {
+      alert('Error de conexión al validar entrega.');
+    }
+  }
+
+  // Reactive Store Profile Edit (NO RELOAD)
+  async function handleStoreProfileSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-profile');
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    const payload = {
+      name: document.getElementById('prof-name').value.trim(),
+      category: document.getElementById('prof-category').value.trim(),
+      phone: document.getElementById('prof-phone').value.trim() || null,
+      floor: document.getElementById('prof-floor').value,
+      location: document.getElementById('prof-location').value.trim(),
+      logo_url: document.getElementById('prof-logo').value.trim() || null,
+      description: document.getElementById('prof-desc').value.trim() || null
+    };
+
+    try {
+      const res = await fetch('/api/business/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const b = data.business;
+        document.getElementById('header-store-name').textContent = b.name;
+        document.getElementById('header-store-sub').innerHTML = `${b.category} &bull; Ubicación: <strong>${b.floor} · ${b.location}</strong> &bull; Contacto: ${b.phone || 'Sin teléfono'}`;
+        if (b.logo_url) document.getElementById('header-store-logo').src = b.logo_url;
+        showToast('✓ Perfil de tienda actualizado exitosamente');
+      } else {
+        alert(data.error || 'Error al actualizar perfil de tienda');
+      }
+    } catch (err) {
+      alert('Error de conexión al guardar perfil.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Guardar Cambios del Perfil';
+    }
+  }
+
+  // Reactive Coupon Validation (NO RELOAD)
+  async function handleValidateCoupon(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-validate-coupon');
+    const input = document.getElementById('input-seller-coupon');
+    const code = input.value.trim().toUpperCase();
+    if (!code) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Validando...';
+
+    try {
+      const res = await fetch('/api/business/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code })
+      });
+      const data = await res.json();
+      const resCard = document.getElementById('coupon-validation-result');
+
+      if (res.ok) {
+        const c = data.coupon;
+        document.getElementById('res-coupon-valid').textContent = 'Cupón Válido y Consumido';
+        document.getElementById('res-coupon-code').textContent = c.code;
+        const discountStr = c.discount_type === 'percent' ? `${c.discount_value}% Descuento` : `Bs ${parseFloat(c.discount_value).toFixed(2)} Descuento`;
+        document.getElementById('res-coupon-desc').textContent = discountStr;
+        document.getElementById('res-coupon-meta').textContent = `Mínimo de compra: Bs ${parseFloat(c.min_purchase_bs).toFixed(2)}`;
+        resCard.style.display = 'block';
+        showToast('✓ Cupón validado exitosamente en caja');
+        input.value = '';
+      } else {
+        alert(data.error || 'Cupón inválido o expirado.');
+      }
+    } catch (err) {
+      alert('Error de conexión al validar cupón.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Validar Cupón';
+    }
+  }
+
+  // Reactive Counter Points Crediting by QR (NO RELOAD)
+  async function handleCreditPoints(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-credit-points');
+    const qrInput = document.getElementById('input-qr-code');
+    const amountInput = document.getElementById('input-qr-amount');
+
+    btn.disabled = true;
+    btn.textContent = 'Acreditando...';
+
+    try {
+      const res = await fetch('/api/business/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          qr_code: qrInput.value.trim(),
+          amount_bs: parseFloat(amountInput.value)
+        })
+      });
+      const data = await res.json();
+      const resCard = document.getElementById('credit-points-result');
+
+      if (res.ok) {
+        document.getElementById('res-points-val').textContent = `+${data.points_credited} PTS`;
+        document.getElementById('res-points-cust').textContent = `Cliente: ${data.customer.name} (Nivel ${data.customer.level})`;
+        document.getElementById('res-points-meta').textContent = `Compra de Bs ${parseFloat(amountInput.value).toFixed(2)} registrada en el libro contable inmutable.`;
+        resCard.style.display = 'block';
+        showToast(`✓ Se acreditaron ${data.points_credited} puntos al cliente`);
+        qrInput.value = '';
+        amountInput.value = '';
+      } else {
+        alert(data.error || 'No se pudo acreditar puntos.');
+      }
+    } catch (err) {
+      alert('Error de conexión al acreditar puntos.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Acreditar Puntos al Cliente';
+    }
+  }
+
+  // Restore active tab on page load
+  document.addEventListener('DOMContentLoaded', () => {
+    const savedTab = localStorage.getItem('seller_active_tab') || 'analytics';
+    switchSellerTab(savedTab);
+  });
+</script>
 {% endblock %}

@@ -19,6 +19,7 @@ from extensions import limiter
 from services.business_service import (
     credit_points_by_qr,
     get_business_for_owner,
+    get_business_sales_analytics,
     list_business_transactions,
     register_business,
     require_business,
@@ -181,6 +182,15 @@ def business_transactions():
     return jsonify({"items": [entry.to_dict() for entry in entries]})
 
 
+@business_bp.get("/business/analytics")
+@require_seller_or_admin
+def business_analytics():
+    """Sales, profit, orders count and performance breakdown across periods."""
+    business = require_business(current_user_or_401())
+    period = request.args.get("period", "month").lower()
+    return jsonify(get_business_sales_analytics(business, period=period))
+
+
 @business_bp.post("/business/coupons/validate")
 @require_seller_or_admin
 def validate_shop_coupon():
@@ -287,7 +297,7 @@ def redeem_pickup(order_id):
     """
     business = require_business(current_user_or_401())
     order = get_order(order_id)
-    code = _json_body().get("code")
+    code = _json_body().get("code") or _json_body().get("pickup_code")
     if not code:
         raise ValidationError("'code' is required")
     validate_pickup(order, str(code), business)

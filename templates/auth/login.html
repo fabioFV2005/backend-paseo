@@ -1,25 +1,110 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sign in · Paseo</title>
+    <title>Iniciar Sesión · Paseo Aranjuez</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
     <script src="{{ url_for('static', filename='js/login.js') }}" defer></script>
   </head>
   <body>
     <main class="auth-shell">
       <section class="auth-card" aria-labelledby="signin-title">
-        <h1 id="signin-title" class="auth-title">Sign in to Paseo</h1>
-        <p class="auth-subtitle">Use your Google account to continue.</p>
+        <div class="auth-header">
+          <a href="{{ url_for('auth.home') }}" class="back-link" title="Volver al catálogo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Volver a la tienda
+          </a>
+          <div class="brand-badge">Paseo Aranjuez</div>
+          <h1 id="signin-title" class="auth-title">Bienvenido</h1>
+          <p class="auth-subtitle">Ingresa para acumular puntos, hacer pedidos y gestionar tu local.</p>
+        </div>
 
         {% if error_message %}
-        <p class="auth-error" role="alert">{{ error_message }}</p>
+        <div class="auth-error" role="alert">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>{{ error_message }}</span>
+        </div>
         {% endif %}
 
-        <a class="btn-google" href="{{ url_for('google_oauth_login') }}"
-           data-loading-label="Redirecting to Google&hellip;"
-           data-default-label="Continue with Google">
+        <!-- Quick 1-Click Demo Login -->
+        <div class="demo-section">
+          <div class="section-label">
+            <span>Acceso rápido de prueba</span>
+            <span class="pill-demo">Demo</span>
+          </div>
+          <p class="demo-caption">Selecciona un perfil para ingresar al instante sin contraseñas:</p>
+          <div class="demo-grid">
+            {% for u in demo_users %}
+            <form action="{{ url_for('auth.login') }}" method="post" class="demo-form">
+              <input type="hidden" name="email" value="{{ u.email }}">
+              <input type="hidden" name="next" value="{{ next_url }}">
+              <button type="submit" class="demo-btn" title="Entrar como {{ u.name }}">
+                <span class="demo-icon" style="font-size: 11px; font-weight: 700; color: #475569;">{{ u.icon_text }}</span>
+                <span class="demo-info">
+                  <span class="demo-name-row">
+                    <strong class="demo-name">{{ u.name }}</strong>
+                    <span class="badge {{ u.badge }}">{{ u.role }}</span>
+                  </span>
+                  <span class="demo-desc">{{ u.desc }}</span>
+                </span>
+                <svg class="demo-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 18l6-6-6-6"/>
+                </svg>
+              </button>
+            </form>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="divider">
+          <span>o ingresa con tu correo</span>
+        </div>
+
+        <!-- Email input form -->
+        <form action="{{ url_for('auth.login') }}" method="post" class="email-form">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <div class="input-group">
+            <label for="email-input" class="input-label">Correo electrónico</label>
+            <div class="input-wrapper">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="input-icon">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+              </svg>
+              <input 
+                id="email-input" 
+                type="email" 
+                name="email" 
+                placeholder="ejemplo@correo.com" 
+                required 
+                autocomplete="email"
+                class="text-input"
+              >
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">
+            <span>Continuar con correo</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </button>
+        </form>
+
+        <div class="divider">
+          <span>o servicio externo</span>
+        </div>
+
+        <!-- Google OAuth option -->
+        <a class="btn-google" href="{{ url_for('auth.google_oauth_login') }}"
+           data-loading-label="Redirigiendo a Google&hellip;"
+           data-default-label="Continuar con Google">
           <span class="btn-google-icon" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" focusable="false">
               <path fill="#4285F4" d="M17.64 9.2045c0-.6381-.0573-1.2518-.1636-1.8409H9v3.4814h4.8436c-.2086 1.125-.8427 2.0782-1.7959 2.7164v2.2581h2.9087c1.7018-1.5668 2.6836-3.874 2.6836-6.615z"/>
@@ -30,12 +115,11 @@
           </span>
           <span class="btn-google-spinner spinner" aria-hidden="true">
             <span></span><span></span><span></span><span></span>
-            <span></span><span></span><span></span><span></span>
           </span>
-          <span class="btn-google-label">Continue with Google</span>
+          <span class="btn-google-label">Continuar con Google</span>
         </a>
 
-        <p class="auth-legal">By continuing, Google shares your name and email address with Paseo.</p>
+        <p class="auth-legal">Paseo Aranjuez &bull; Centro de Fidelización y Marketplace</p>
       </section>
     </main>
   </body>
