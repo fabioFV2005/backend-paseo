@@ -235,8 +235,24 @@ def login():
     if error_code and not error_message:
         error_message = LOGIN_ERRORS.get(error_code)
 
+    # The customer's balance and level are read from the database rather than
+    # written into the label. A hardcoded "1,200 pts" is a claim the demo data
+    # stops backing the first time somebody spends points, and the mismatch is
+    # visible: the button promises one number and the dashboard right after it
+    # shows another.
+    #
+    # The level is printed raw, exactly as the templates print it
+    # (`Nivel {{ user.level }}`), so the button and the dashboard cannot
+    # disagree about the wording either.
+    customer = find_user_by_email("cliente@paseo.test")
+    if customer is None:
+        customer_desc = "Cliente Demo"
+    else:
+        balance = f"{customer.points_balance:,}".replace(",", ".")
+        customer_desc = f"{balance} pts · Nivel {customer.level}"
+
     demo_users = [
-        {"email": "cliente@paseo.test", "name": "Cliente Demo", "role": "Cliente", "badge": "badge-neutral", "desc": "1,200 pts · Nivel Oro", "icon_text": "CL"},
+        {"email": "cliente@paseo.test", "name": "Cliente Demo", "role": "Cliente", "badge": "badge-neutral", "desc": customer_desc, "icon_text": "CL"},
         {"email": "cafe@paseo.test", "name": "Dueño Cafe", "role": "Vendedor", "badge": "badge-info", "desc": "Café Aranjuez · Cafetería & Pastelería", "icon_text": "CF"},
         {"email": "tech@paseo.test", "name": "Dueño Tech", "role": "Vendedor", "badge": "badge-info", "desc": "Tech Aranjuez · Tecnología & Audio", "icon_text": "TC"},
         {"email": "admin@paseo.test", "name": "Admin Paseo", "role": "Administrador", "badge": "badge-dark", "desc": "Gestión general del centro comercial", "icon_text": "AD"},
